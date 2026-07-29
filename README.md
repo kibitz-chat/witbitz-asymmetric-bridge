@@ -7,14 +7,17 @@ The assistant is admitted to the shared Bridge as **read · cannot post** — it
 Every message that reaches the supplier (**Greg**) is one Emily *approved and signed*. Greg has no account and no
 install — a link is his key — and everything he's asked to believe, he can check himself:
 
-| Claim | How Greg checks it |
+| Claim | How you check it (all exercised by `live-e2e.mjs`) |
 |---|---|
-| The assistant could not put anything in front of him | the **public** membership record — `read`, not `submit` (the server refuses its submit `403`) |
-| Every message is a commitment Emily signed | **two** signatures on the crossing, resolving against the public keys |
-| Her private prep room never crossed | he holds no key to it — it's **unreachable**, not withheld by the UI |
+| The assistant can't put anything in front of Greg | `read`, not `submit` in the **public** membership; its solo submit is refused **`403`** |
+| Every message is Emily's, co-authored by the assistant | **two** signatures on the crossing, resolving against the public keys |
+| The signatures **bind** the content | altering a crossed message's body is refused **`400`** — present ≠ binding |
+| The drafter attribution isn't decorative | a co-signature naming a **non-member** is refused **`400`** |
+| The content is confidential — not the feed | the feed is public ciphertext; a body is **unreachable** without the key |
 
-The negotiation copy is scripted for the walkthrough. Every signature, seal, epoch key, and crossing is **real**,
-run client-side against the live Bridge at `api.witbitz.chat/v1/bridge`. Keys never leave the browser.
+Every signature, seal, epoch key, cap, and integrity check is **real**, run client-side against the live Bridge at
+`api.witbitz.chat/v1/bridge`; keys never leave the browser. The negotiation copy — and the prep room, and the
+assistant's reasoning — are **scripted** (see Scope).
 
 ## The files (this is the whole app — read it)
 
@@ -25,14 +28,22 @@ run client-side against the live Bridge at `api.witbitz.chat/v1/bridge`. Keys ne
 | [`seat.js`](./seat.js) | Greg's link seat: read + verify every signature + open by his key + post; the `[check this]` widget |
 | [`index.html`](./index.html) · [`seat.html`](./seat.html) · [`style.css`](./style.css) | the two seats |
 | [`_headers`](./_headers) | the enforced CSP — `connect-src` is `self` + `api.witbitz.chat` **only** (the app's true egress) |
-| [`live-e2e.mjs`](./live-e2e.mjs) | a runnable proof (`node live-e2e.mjs`) — drives the **live** Bridge end to end: co-signed crossing accepted, both signatures verified, the read-only assistant's solo submit refused `403`, a body **unreachable** without the key |
+| [`live-e2e.mjs`](./live-e2e.mjs) | a runnable proof (`node live-e2e.mjs`) — drives the **live** Bridge end to end: co-signed crossing accepted + verified; assistant solo submit **`403`**; **tampered body `400`**; **non-member drafter `400`**; a body unreachable without the key. Run daily by [CI](./.github/workflows/verify.yml). |
 
-## What it does not prove — on the page, plainly
+## Scope — what this demo implements
+
+The **crossing**: real signatures, caps, and content-integrity, live against the Bridge. Emily's **prep room**
+(a sealed Space with her brief and documents) and the assistant's **model turn** are **scripted** — not built in
+this repo. So "her private material never crossed" is true because there's nothing here to cross; what's exercised
+is the crossing itself. The Bridge is the novel half — and the real one.
+
+## What it does not prove — plainly
 
 - Emily's ceiling was never transmitted, but the **shape** of her concessions still narrows where it sits.
   Encryption protects the channel, not the inference.
-- The render decrypts the prep room to run the assistant. That it runs only the declared program is the
-  **attested-tier** conditional — designed, not checkable today.
+- In the *full* system the render decrypts the prep room to run the assistant — that it runs only the declared
+  program is the **attested-tier** conditional (designed, not checkable today). This demo has **no such render**;
+  the model turn is scripted.
 - Greg trusts that Emily reads what she approves. The runtime can enforce *that* she approved, never that it was wise.
 
 ## License

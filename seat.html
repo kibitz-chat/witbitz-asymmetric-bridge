@@ -42,12 +42,15 @@
       <a href="./bridgeClient.js">This app's bridge client</a>
       <a href="https://docs.witbitz.chat/docs/verify.md">How to verify it yourself</a>
     </div>
-    <p class="rnote">Emily's private prep room is a different, sealed space — it isn't hidden from you here, it's
-      <b>unreachable</b>: you hold no key to it, so it never renders anywhere.</p>
+    <p class="rnote"><b>Precise:</b> the message <b>bodies</b> are ciphertext sealed to keys — an outsider can fetch
+      the public feed, but can't open it. The <b>content</b> is unreachable, not the space.</p>
+    <p class="rnote"><b>Scope:</b> this demo implements the Bridge <b>crossing</b> — real signatures, caps, and
+      content-integrity, live. Emily's prep room and her assistant's model turn are <b>scripted</b>; they aren't in
+      this demo, so nothing of hers "almost crossed." The Bridge is the novel half, and it's the real one.</p>
   </section>
 
-  <p class="foot">Real cryptography, live against <code>api.witbitz.chat/v1/bridge</code>. The negotiation copy is
-    scripted for the walkthrough; every signature, seal, and crossing is real.</p>
+  <p class="foot">Real cryptography for the crossing, live against <code>api.witbitz.chat/v1/bridge</code> — every
+    signature, seal, cap, and integrity check is real. The prep room and the negotiation copy are scripted.</p>
 </div>
 
 <div class="pop" id="pop">
