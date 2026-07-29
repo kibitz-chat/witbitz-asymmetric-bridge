@@ -97,6 +97,17 @@ export async function revoke(membership, actor, partyId) {
   next.auth = { party: actor.id, sig: await signStr(actor.sign.priv, membershipCore(next)) }
   return next
 }
+/** Re-cap an EXISTING member at a new epoch WITHOUT ejecting them: mint a fresh key sealed to EVERY current member
+ *  (incl. the target, who KEEPS their key + read), only the target's caps change. A DOWNGRADE (submit→read) leaves
+ *  them a read-only member — distinct from revoke, which removes them entirely. Signed by the actor (needs `admit`). */
+export async function recap(membership, actor, partyId, caps) {
+  const e = membership.epoch + 1
+  const ke = randKey()
+  const members = await Promise.all(membership.members.map(async (m) => ({ ...m, caps: m.party === partyId ? caps : m.caps, keyGrants: { ...m.keyGrants, [e]: await sealTo(ke, m.boxPub) } })))
+  const next = { ...membership, epoch: e, members }
+  next.auth = { party: actor.id, sig: await signStr(actor.sign.priv, membershipCore(next)) }
+  return next
+}
 /** The current epoch key as raw bytes, opened with my box private key (null if I hold no grant). */
 export async function epochKeyRaw(membership, identity) {
   const m = membership.members.find((x) => x.party === identity.id)
@@ -154,15 +165,16 @@ export function bridge(base) {
     putMembers: (space, membership) => fetch(`${base}/spaces/${encodeURIComponent(space)}/members`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(membership) }).then(j),
     submit: (space, entry) => fetch(`${base}/spaces/${encodeURIComponent(space)}/entries`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(entry) }).then(j),
     read: (space, cursor = 0) => fetch(`${base}/spaces/${encodeURIComponent(space)}/entries?cursor=${cursor}`).then(j),
-    del: async (space, actor) => { // teardown (sp-ci-* only) — a current admit-holder signs it; the server verifies
-      const sig = await signDelete(actor, space)
-      return fetch(`${base}/spaces/${encodeURIComponent(space)}?party=${encodeURIComponent(actor.id)}&sig=${encodeURIComponent(sig)}`, { method: 'DELETE' }).then(j)
+    del: async (space, actor) => { // teardown (sp-ci-* only) — a current admit-holder signs a FRESH, body-carried authorization
+      const ts = Date.now(), nonce = b64u(crypto.getRandomValues(new Uint8Array(12)))
+      const sig = await signDelete(actor, space, ts, nonce)
+      return fetch(`${base}/spaces/${encodeURIComponent(space)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ party: actor.id, sig, ts, nonce }) }).then(j)
     },
   }
 }
 
 /** Sign a teardown authorization for `space` (bound to the space id) — the actor must hold `admit` server-side. */
-export async function signDelete(actor, space) { return signStr(actor.sign.priv, canon({ op: 'delete', space })) }
+export async function signDelete(actor, space, ts, nonce) { return signStr(actor.sign.priv, canon({ op: 'delete', space, ts, nonce })) }
 
 /** Sign a membership record as `actor` (for crafting/attacking updates in tests). admit()/revoke() set `auth` themselves. */
 export async function signMembership(actor, membership) { return signStr(actor.sign.priv, membershipCore(membership)) }

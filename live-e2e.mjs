@@ -1,6 +1,6 @@
 // Drive the LIVE Bridge through the full asymmetric co-signed flow — the runnable proof. Creates throwaway sp-ci-*
 // spaces and DELETES them at the end (signed teardown), so CI leaves no litter on production. Run: node live-e2e.mjs
-import { mintIdentity, publicIdentity, openSpace, admit, revoke, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, bridge } from './bridgeClient.js'
+import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, bridge } from './bridgeClient.js'
 
 const api = bridge(process.env.BRIDGE_BASE || 'https://api.witbitz.chat/v1/bridge')
 const log = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!ok) process.exitCode = 1 }
@@ -68,6 +68,9 @@ try {
   const rogue = await mintIdentity('rogue-admin')
   const R = await space()
   R.m = await admit(R.m, emily, publicIdentity(rogue), { caps: ['read', 'submit', 'admit'] }); await api.putMembers(R.s, R.m)
+  const heldByRogue = R.m // the membership record rogue holds WHILE a member — its retained key material
+  const oldCrossing = await makeCoSignedEntry(R.m, emily, assistant, { content: 'seen while rogue was a member' }); await api.submit(R.s, oldCrossing)
+  log((await openEntry(heldByRogue, rogue, oldCrossing)) === 'seen while rogue was a member', 'rogue reads content sealed under the epoch key it holds')
   const upO = R.m.members.map((x) => (x.party === assistant.id ? { ...x, caps: ['read', 'submit'] } : x)) // "upgrade the assistant"
   const preNext = await sign({ space: R.s, epoch: R.m.epoch + 1, members: upO }, rogue)   // rogue pre-signs for the next epoch…
   const preFuture = await sign({ space: R.s, epoch: R.m.epoch + 2, members: upO }, rogue)  // …and a FUTURE one, anticipating the revoke
@@ -78,6 +81,18 @@ try {
   await refuse(403, 'no-lockout: even the founder cannot remove the last admit-holder', async () => api.putMembers(R.s, await sign({ space: R.s, epoch: R.m.epoch + 1, members: R.m.members.map((x) => (x.party === emily.id ? { ...x, caps: ['read', 'submit'] } : x)) }, emily)))
   await refuse(403, 'epoch rollback signed by a legitimate admit-holder (isolates the monotonic guard)', async () => api.putMembers(R.s, await sign({ space: R.s, epoch: R.m.epoch - 1, members: R.m.members }, emily)))
   log(seq(await api.submit(R.s, await makeCoSignedEntry(R.m, greg, assistant, { content: 'crossing still works post-revocation' }))), 'positive control: a genuine crossing on the post-revocation space IS accepted')
+  // REVOCATION'S HONEST HALF — forward-secrecy protects the FUTURE, not the past (the guarantee is credible BECAUSE it isn't absolute).
+  const newCrossing = await makeCoSignedEntry(R.m, emily, assistant, { content: 'sealed after the boundary' }); await api.submit(R.s, newCrossing)
+  log((await openEntry(heldByRogue, rogue, oldCrossing)) === 'seen while rogue was a member', "forward-secrecy: rogue STILL opens what it already held (can't un-see the past)")
+  log((await openEntry(heldByRogue, rogue, newCrossing)) === null, 'forward-secrecy: but rogue was never sealed the new epoch key → the future is dark')
+
+  // DOWNGRADE (recap) — a member KEPT but stripped of submit: writes refused, reads still work (distinct from revoke = eject).
+  const D = await space()
+  D.m = await recap(D.m, emily, greg.id, ['read']); await api.putMembers(D.s, D.m)
+  log((await api.getMembers(D.s)).members.find((x) => x.party === greg.id).caps.join() === 'read', 'downgrade: Greg is still a member, now read-only')
+  await refuse(403, 'the downgraded member (submit→read) can no longer submit', async () => api.submit(D.s, await makeEntry(D.m, greg, { content: 'i lost submit' })))
+  const dShared = await makeCoSignedEntry(D.m, emily, assistant, { content: 'shared after downgrade' }); await api.submit(D.s, dShared)
+  log((await openEntry(D.m, greg, dShared)) === 'shared after downgrade', 'downgrade: but the downgraded member STILL reads new content (kept read + the new key)')
 } finally {
   let cleaned = 0
   for (const { s, admin } of created) { try { await api.del(s, admin); cleaned++ } catch { /* teardown is best-effort */ } }
