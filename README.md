@@ -64,6 +64,8 @@ node server/verify-guards.mjs                          # deletes each of the 16 
 
 The **live** proof (`node live-e2e.mjs`) can only show what an honest server *does*; these offline tests show what the code *is* — including the two things a client e2e structurally can't (atomicity of the epoch advance; that removing a guard breaks something).
 
+> **One honest caveat.** [`server/`](./server) is the **source**. `live-e2e.mjs` shows the Bridge deployed at `api.witbitz.chat` behaving *identically* to it — strong **evidence**, but not **attestation**: nothing here cryptographically binds the running server to this exact code. That binding (and the defense against an equivocating operator) is the server-signed **checkpoint** layer — designed, not yet built.
+
 ## Scope — what this demo implements
 
 The **crossing**: real signatures, caps, and content-integrity, live against the Bridge. Emily's **prep room**

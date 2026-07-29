@@ -1,4 +1,4 @@
-// agent/bridgeMembership.mjs — the Bridge Protocol's governance core (docs/bridge-protocol.md): KEY EPOCHS +
+// server/bridgeMembership.mjs — the Bridge Protocol's governance core (the Bridge protocol): KEY EPOCHS +
 // MEMBERSHIP + CAPABILITIES. A shared Space is a sequence of epochs; each epoch has its own key `sharedMk_e`, sealed
 // per-member to that member's public key (recipient-key model, reuses envelope.sealTo). Every membership change — a
 // JOIN/ADMIT or a REVOKE — is an epoch boundary that mints a fresh key sealed to the NEW member set:

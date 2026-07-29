@@ -4,7 +4,7 @@ import { genPartyIdentity, publicIdentity, openSpace, admit, epochKey } from './
 import { genServerKey, verifyCheckpoint, chainMatchesCheckpoint } from './bridgeLog.mjs'
 import { createService, serviceCheckpoint, partySubmit, partyRead } from './bridgeSpace.mjs'
 
-// A = a NATIVE party (a witbitz comedian's Space, conceptually). X = an EXTERNAL party — it holds ONLY an identity and
+// A = a NATIVE party (a first-party Space, conceptually). X = an EXTERNAL party — it holds ONLY an identity and
 // speaks the protocol crypto; it runs NO witbitz Space code. This is the interop proof: the two are first-class
 // co-inhabitants of one shared space, governed + attributed + content-blind to the platform.
 const A = await genPartyIdentity() // native founder

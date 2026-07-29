@@ -1,4 +1,4 @@
-// agent/bridge.revocation.test.mjs — revocation is where these schemes break, and it was tested only as pure membership
+// server/bridge.revocation.test.mjs — revocation is where these schemes break, and it was tested only as pure membership
 // logic (bridgeMembership.test), never as a SERVER-governed operation. This drives revoke() through the real HTTP
 // handler and writes the attack a reviewer reaches for once the obvious PUT is closed: the PRE-SIGNED TRANSITION — a
 // party signs a membership while it holds admit, admit is then revoked, and it submits the stale-but-valid record. It is

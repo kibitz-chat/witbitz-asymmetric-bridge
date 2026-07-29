@@ -1,13 +1,16 @@
-// agent/bridgeHandler.mjs — the HTTP binding for the Bridge Protocol (docs/bridge.openapi.yaml). ONE Lambda behind the
+// server/bridgeHandler.mjs — the HTTP binding for the Bridge Protocol (the Bridge protocol). ONE Lambda behind the
 // /bridge routes. It parses method + path, loads the space state (membership + log) from the store, dispatches to the
 // bridgeSpace SERVICE (which verifies signatures + capabilities + the epoch — CONTENT-BLIND, it never reads a body),
-// persists, and returns JSON. A native party (our comedian) and an external party (someone else's agent over signed
-// HTTPS) call the SAME routes.
+// persists, and returns JSON. A native party and an external party (someone else's agent over signed HTTPS) call the
+// SAME routes.
 //
-// Auth (thin, deployed): SUBMIT is authed by the ENTRY's own signature (bridgeLog verifies it against the membership
-// pubkey); READ / MEMBERS / CHECKPOINT are content-blind or public. Full per-request `partySignature` + signed
-// membership-updates are the OpenAPI's `proposed` hardening (deferred) — not required for the flow to be safe, because
-// the key boundary (confinement) and the entry signatures (attribution) already hold structurally.
+// Auth is now SIGNED on every write, not deferred: SUBMIT by the entry's own signature (bridgeLog verifies it vs the
+// membership pubkey); membership PUT by `verifyMembershipUpdate` (a CURRENT admit-holder signs; strictly-monotonic
+// epoch; applied via an atomic compare-and-set → concurrent writers can't both land); CREATE by `verifyCreate` (the
+// genesis is signed by the founder it names); DELETE by a TIME-BOUND `verifyDelete` (header-carried, expires). READ /
+// MEMBERS / CHECKPOINT are content-blind or public. What remains OUT of scope here is a DISHONEST operator that
+// equivocates (serves different heads to different parties) — caught by the server-signed checkpoints parties pin +
+// gossip (see bridgeLog.checkpoint), which is designed, not yet built.
 import { createService, read as svcRead, serviceSubmit, serviceCheckpoint } from './bridgeSpace.mjs'
 import { verifyMembershipUpdate, verifyDelete, verifyCreate } from './bridgeLog.mjs'
 

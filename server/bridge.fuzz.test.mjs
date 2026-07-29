@@ -1,6 +1,6 @@
-// agent/bridge.fuzz.test.mjs — PROPERTY + DIFFERENTIAL fuzzing of the Bridge server. Hand-written tests cover the cases
+// server/bridge.fuzz.test.mjs — PROPERTY + DIFFERENTIAL fuzzing of the Bridge server. Hand-written tests cover the cases
 // we thought of; a fuzzer explores the ones we didn't. A spec-derived ORACLE (accept iff the INVARIANT holds — derived
-// from docs/bridge-protocol.md, NOT copied from the handler) is checked against the real handler over hundreds of random
+// from the Bridge protocol, NOT copied from the handler) is checked against the real handler over hundreds of random
 // inputs. Any divergence is a bug in one of them. Deterministic by default (fixed seed) so a failure reproduces; set
 // FUZZ_SEED / FUZZ_N to widen. Validity is known BY CONSTRUCTION (we sign correctly, corrupt, or omit), so the oracle
 // never re-implements the crypto — it reasons about the invariant.

@@ -1,4 +1,4 @@
-// agent/bridge.adversary.test.mjs — the HOSTILE-client suite. Our tests used to drive the server through our own
+// server/bridge.adversary.test.mjs — the HOSTILE-client suite. Our tests used to drive the server through our own
 // well-behaved admit()/putMembers(), which can only emit VALID data — so "does the server refuse a hostile write?" was
 // never asked, and an unauthenticated membership upgrade slipped through. This file constructs malformed/forged requests
 // DIRECTLY (bypassing the honest client) and fires them at every mutating route, organized as an invariant × attack

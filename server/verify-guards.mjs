@@ -1,4 +1,4 @@
-// tools/verify-guards.mjs — MUTATION check for the Bridge's security guards. The bug we shipped (an unauthenticated
+// server/verify-guards.mjs — MUTATION check for the Bridge's security guards. The bug we shipped (an unauthenticated
 // membership PUT could upgrade a read-only party) survived 26 green tests because the guard DID NOT EXIST and nothing
 // noticed its absence. A passing suite proves the tests pass; it does NOT prove any given check is load-bearing.
 //
@@ -6,7 +6,7 @@
 // re-runs the full Bridge suite, and asserts the suite now FAILS. A guard whose removal keeps the suite green is a guard
 // with no test — reported as SURVIVED and the run exits non-zero. Restores every file (even on crash). No deps.
 //
-//   node tools/verify-guards.mjs
+//   node server/verify-guards.mjs
 import { readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'

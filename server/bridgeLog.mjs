@@ -1,4 +1,4 @@
-// agent/bridgeLog.mjs — the Bridge Protocol's data plane (docs/bridge-protocol.md): SIGNED, epoch-tagged entries, a
+// server/bridgeLog.mjs — the Bridge Protocol's data plane (the Bridge protocol): SIGNED, epoch-tagged entries, a
 // hash-chained append-only log, and a server-signed CHECKPOINT. This is what makes the audit trustless:
 //   · ATTRIBUTION — the CLIENT signs each entry with its party key (ECDSA); the platform verifies against the public
 //     membership record, ON CIPHERTEXT (it never reads `body`). No party can speak as another.
@@ -70,7 +70,7 @@ export async function verifyAttribution(membership, entry) {
 export const membershipCore = (m) => canon({ space: m.space, epoch: m.epoch, members: m.members })
 /** CLIENT: an admit/revoke-capable actor signs the new membership record. */
 export async function signMembership(actorSignPriv, membership) { return signStr(actorSignPriv, membershipCore(membership)) }
-/** SERVER: is `next` a LEGAL SUCCESSOR of the current head `cur`? This is a DELIBERATE policy (docs/bridge-protocol.md
+/** SERVER: is `next` a LEGAL SUCCESSOR of the current head `cur`? This is a DELIBERATE policy (the Bridge protocol
  *  §membership-succession), not merely "internally consistent + signed":
  *   · same space, strictly-advancing epoch — monotonic, so an OLDER record can't be replayed;
  *   · signed by a party holding `admit` IN `cur` — authority is re-checked at APPLY time against the CURRENT head, never
@@ -95,7 +95,7 @@ export async function verifyMembershipUpdate(cur, next) {
  *  against, so it must at least be SIGNED by the founder it names: epoch 0 · ≥1 admit-holder · signed by an admit-holder.
  *  So no one can found a space in ANOTHER party's name (the named founder's key must sign). It does NOT by itself stop
  *  id-squatting — whoever creates an unclaimed id FIRST owns it (409 on re-create). The product must therefore mint the
- *  space id AT create as a commitment to the founder, never pre-share it (docs/bridge-protocol.md §Founding). */
+ *  space id AT create as a commitment to the founder, never pre-share it (the Bridge protocol §Founding). */
 export async function verifyCreate(membership) {
   if (!membership || !membership.auth || !Array.isArray(membership.members) || membership.epoch !== 0) return false
   if (!membership.members.some((x) => Array.isArray(x.caps) && x.caps.includes('admit'))) return false

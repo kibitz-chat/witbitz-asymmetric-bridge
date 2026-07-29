@@ -1,11 +1,11 @@
-// agent/bridgeSpace.mjs — the shared-Space SERVICE + the party client, composing the governance core
+// server/bridgeSpace.mjs — the shared-Space SERVICE + the party client, composing the governance core
 // ([[bridgeMembership]]: epochs/membership/caps) and the data plane ([[bridgeLog]]: signed, chained, checkpointed
-// entries) into the Bridge Protocol (docs/bridge-protocol.md). The Lambda binding (native) and the signed-HTTPS binding
+// entries) into the Bridge Protocol (the Bridge protocol). The Lambda binding (native) and the signed-HTTPS binding
 // (external) both call the SAME ops here. Content-blind: the service verifies signatures + caps + the chain and NEVER
 // reads a body (sealed under the epoch key).
 //
-// The `party*` helpers are the CLIENT side — and they are identical for a native party (a witbitz comedian's Space) and
-// an external party (someone else's agent + humans). That symmetry IS the interop: a party is an identity + the crypto,
+// The `party*` helpers are the CLIENT side — and they are identical for a native party and an external party (someone
+// else's agent + humans). That symmetry IS the interop: a party is an identity + the crypto,
 // not witbitz machinery.
 import { epochKey, currentKey } from './bridgeMembership.mjs'
 import { submit as logSubmit, checkpoint as logCheckpoint, verifyAttribution, makeEntry } from './bridgeLog.mjs'
@@ -18,8 +18,9 @@ export const createService = (space, membership, serverKey) => ({ space, members
 export const read = (svc, cursor = 0) => ({ entries: svc.log.slice(cursor), epoch: svc.membership.epoch })
 /** MEMBERS — the public membership record (parties, pubkeys, caps, policies). */
 export const members = (svc) => svc.membership
-/** Apply a membership change produced party-side (an admit/revoke). (Signing the update so the service can verify the
- *  admitter's authority independently is a hardening — deferred; admit/revoke already require the cap client-side.) */
+/** Apply a membership change produced party-side (an admit/revoke/recap). The membership carries the admitter's
+ *  signature and the HANDLER verifies it independently (`verifyMembershipUpdate`) before persisting — the cap check is
+ *  no longer client-side-only. This helper just swaps the in-memory record; the authority check lives at the boundary. */
 export const setMembership = (svc, membership) => ({ ...svc, membership })
 /** SUBMIT — the log layer verifies member · `submit` cap · current epoch · signature, then chains it. */
 export async function serviceSubmit(svc, entry, { now = 0 } = {}) {
