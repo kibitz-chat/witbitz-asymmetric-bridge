@@ -29,6 +29,12 @@ install — a link is his key — and everything he's asked to believe, he can c
 | Revocation protects the future, not the past | a revoked party still opens what it already held, but **never** the new epoch key — credible *because* it isn't absolute |
 | A downgraded member is read-only, not blinded | stripped of `submit`, Greg is refused writes yet still **reads** new content (kept `read` + the new key) |
 
+**The scope line, stated plainly:** every `4xx` in the first table is the *honest server choosing to enforce* — that
+column assumes an **honest operator**. A dishonest one could accept a forged write, or serve one membership to Emily and
+another to Greg (**equivocation**), and nothing in this suite would catch it. Defending against *that* is the
+server-signed **checkpoint** layer parties pin + gossip — **designed, not yet built** (it's the next demo). The second
+table is exactly what survives a dishonest server: your own decryptions, which the platform can neither see nor fake.
+
 Every signature, seal, epoch key, and cap is **real** and keys never leave the browser. The negotiation copy — and the
 prep room, and the assistant's reasoning — are **scripted** (see Scope).
 

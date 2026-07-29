@@ -105,6 +105,17 @@ try {
   log((await api.putMembers(C.s, emilyRevoke)).epoch === raceEpoch, `concurrency: emily's revoke landed first at epoch ${raceEpoch}`)
   await refuse(403, "a competing same-epoch record (dave re-adding greg) can't silently undo the revocation — first-write-wins", async () => api.putMembers(C.s, daveKeepGreg))
   log((await api.getMembers(C.s)).members.every((x) => x.party !== greg.id), 'concurrency: greg stays revoked — reverting needs a fresh epoch (auditable), not a race')
+  // ...and the ATOMIC version: fire two competing same-epoch writes CONCURRENTLY (no await between). The server's
+  // compare-and-set lets EXACTLY ONE land (the loser gets 409, not a silent last-write-wins clobber). BEST-EFFORT: the
+  // network may serialize them, but with the CAS exactly one wins either way — atomicity itself is proven
+  // DETERMINISTICALLY by the handler unit test (bridgeHandler.test), which a client e2e cannot; this only exercises it.
+  const E = await space()
+  E.m = await admit(E.m, emily, publicIdentity(dave), { caps: ['read', 'submit', 'admit'] }); await api.putMembers(E.s, E.m)
+  const nx = E.m.epoch + 1
+  const r1 = await sign({ space: E.s, epoch: nx, members: E.m.members.map((x) => (x.party === assistant.id ? { ...x, caps: ['read'] } : x)) }, emily)
+  const r2 = await sign({ space: E.s, epoch: nx, members: E.m.members.map((x) => (x.party === greg.id ? { ...x, caps: ['read'] } : x)) }, dave)
+  const outcomes = await Promise.allSettled([api.putMembers(E.s, r1), api.putMembers(E.s, r2)]) // fired together, no await between
+  log(outcomes.filter((o) => o.status === 'fulfilled').length === 1, `concurrency (fired together): EXACTLY ONE of two competing epoch-${nx} writes landed (the other 409/403), never both`)
 } finally {
   let cleaned = 0
   for (const { s, admin } of created) { try { await api.del(s, admin); cleaned++ } catch { /* teardown is best-effort */ } }
