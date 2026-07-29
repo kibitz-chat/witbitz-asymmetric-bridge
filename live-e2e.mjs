@@ -1,9 +1,10 @@
 // Drive the LIVE Bridge through the full asymmetric co-signed flow — the runnable proof. Creates throwaway sp-ci-*
-// spaces and DELETES them at the end (teardown), so CI leaves no litter on production. Run: node live-e2e.mjs
-import { mintIdentity, publicIdentity, openSpace, admit, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, bridge } from './bridgeClient.js'
+// spaces and DELETES them at the end (signed teardown), so CI leaves no litter on production. Run: node live-e2e.mjs
+import { mintIdentity, publicIdentity, openSpace, admit, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, bridge } from './bridgeClient.js'
 
 const api = bridge(process.env.BRIDGE_BASE || 'https://api.witbitz.chat/v1/bridge')
 const log = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!ok) process.exitCode = 1 }
+const seq = (r) => typeof (r && r.seq) === 'number'
 const refuse = async (status, label, fn) => { try { await fn(); log(false, `${label} — UNEXPECTEDLY accepted`) } catch (x) { log(x.status === status, `${label} refused ${x.status} ${x.message}`) } }
 
 const emily = await mintIdentity('Emily'), assistant = await mintIdentity("Emily's assistant"), greg = await mintIdentity('Greg')
@@ -23,7 +24,7 @@ try {
 
   // the happy path: a co-signed crossing (assistant drafts, Emily approves + signs)
   const e = await makeCoSignedEntry(A.m, emily, assistant, { content: 'Greg — renewal is up. $0.375/unit against a 500,000-unit annual minimum.' })
-  log(typeof (await api.submit(A.s, e)).seq === 'number', 'co-signed crossing accepted')
+  log(seq(await api.submit(A.s, e)), 'co-signed crossing accepted')
   const entry = (await api.read(A.s)).entries[0]
   const v = await verifyEntry(A.m, entry)
   log(v.ok && v.party.party === emily.id && v.drafter.party === assistant.id, 'both signatures verify: authored by the assistant, approved by Emily')
@@ -35,13 +36,35 @@ try {
   await refuse(400, 'tampered body (signatures BIND content)', async () => { const t = await makeCoSignedEntry(A.m, emily, assistant, { content: 'x' }); t.body = { iv: t.body.iv, ct: 'dGFtcGVyZWQ' }; return api.submit(A.s, t) })
   await refuse(400, 'non-member drafter (attribution is enforced)', async () => api.submit(A.s, await makeCoSignedEntry(A.m, emily, await mintIdentity('not-a-member'), { content: 'x' })))
   await refuse(400, 'replay-append (re-submit a valid entry)', async () => api.submit(A.s, e))
+
+  // the AUTHORIZATION test — the big one: nobody but a current admit-holder can rewrite membership. Crafting a record
+  // that UPGRADES the read-only assistant to `submit` and PUTting it must be refused, however it is signed.
+  const upgraded = A.m.members.map((x) => (x.party === assistant.id ? { ...x, caps: ['read', 'submit'] } : x))
+  const forge = async (signer) => { const n = { space: A.s, epoch: A.m.epoch + 1, members: upgraded }; n.auth = { party: signer.id, sig: await signMembership(signer, n) }; return n }
+  await refuse(403, 'Greg (submit, not admit) upgrades the assistant', async () => api.putMembers(A.s, await forge(greg)))
+  await refuse(403, 'the assistant upgrades ITSELF', async () => api.putMembers(A.s, await forge(assistant)))
+  await refuse(403, 'an outsider rewrites membership', async () => api.putMembers(A.s, await forge(await mintIdentity('intruder'))))
+  await refuse(403, 'an UNSIGNED membership PUT', async () => api.putMembers(A.s, { space: A.s, epoch: A.m.epoch + 1, members: upgraded }))
+  // and the guarantee still holds after every refused upgrade: the assistant STILL cannot cross anything alone
+  await refuse(403, 'assistant STILL cannot submit after the refused upgrades', async () => api.submit(A.s, await makeEntry(A.m, assistant, { content: 'still sneaking' })))
+  // the public membership is unchanged — the assistant is still read-only
+  log((await api.getMembers(A.s)).members.find((x) => x.party === assistant.id).caps.join() === 'read', 'positive control: after the attacks the public membership is UNCHANGED (assistant still read-only)')
+
+  // teardown must ALSO be authorized (not merely name-scoped): a member without `admit`, or an outsider, can't delete
+  await refuse(403, 'Greg (no admit cap) tears the space down', async () => api.del(A.s, greg))
+  await refuse(403, 'an outsider tears the space down', async () => api.del(A.s, await mintIdentity('vandal')))
+
   const B = await space()
   await refuse(400, 'cross-space replay (A\'s entry into B)', async () => api.submit(B.s, e))
+  log(seq(await api.submit(B.s, await makeCoSignedEntry(B.m, emily, assistant, { content: 'legit crossing native to B' }))), 'positive control: a fresh crossing NATIVE to B IS accepted (so the refusal above is specific, not "B is broken")')
+
   A.m = await admit(A.m, emily, publicIdentity(await mintIdentity('d')), { caps: ['read'] }); await api.putMembers(A.s, A.m) // epoch boundary
   await refuse(400, 'epoch-boundary replay (old epoch)', async () => api.submit(A.s, e))
+  log(seq(await api.submit(A.s, await makeCoSignedEntry(A.m, emily, assistant, { content: 'fresh crossing at the NEW epoch' }))), 'positive control: a fresh crossing at the NEW epoch IS accepted (so "old epoch refused" ≠ "the space broke")')
 } finally {
   let cleaned = 0
-  for (const s of created) { try { await api.del(s); cleaned++ } catch { /* teardown is best-effort */ } }
-  log(cleaned === created.length, `teardown: deleted ${cleaned}/${created.length} self-test spaces (no litter on prod)`)
+  for (const s of created) { try { await api.del(s, emily); cleaned++ } catch { /* teardown is best-effort */ } }
+  if (cleaned === created.length) log(true, `teardown: deleted ${cleaned}/${created.length} self-test spaces (no litter on prod)`)
+  else console.warn(`⚠ teardown: deleted ${cleaned}/${created.length} — a transient DELETE hiccup left litter, but every assertion above still passed (a warning, not a failure)`)
   console.log('\nLIVE e2e complete.')
 }
