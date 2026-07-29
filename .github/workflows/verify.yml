@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '17 13 * * *'    # daily — catches the Bridge preview moving under us
   workflow_dispatch:
+permissions:
+  contents: read              # least privilege — this workflow only reads the repo
 jobs:
   live-e2e:
     runs-on: ubuntu-latest

@@ -1,5 +1,7 @@
 # The Asymmetric Bridge — a Witbitz demo
 
+[![verify](https://github.com/kibitz-chat/witbitz-asymmetric-bridge/actions/workflows/verify.yml/badge.svg)](https://github.com/kibitz-chat/witbitz-asymmetric-bridge/actions/workflows/verify.yml) — the daily green check drives the **live** Bridge end to end.
+
 **Live:** <https://witbitz-demo.pages.dev> · **the code that touches your data:** [witbitz-render](https://github.com/kibitz-chat/witbitz-render) · **verify:** <https://docs.witbitz.chat/docs/verify.md>
 
 One side has an AI; the other has a link. A buyer (**Emily**) negotiates a supplier renewal with her assistant.

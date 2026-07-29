@@ -139,6 +139,7 @@ export function bridge(base) {
     putMembers: (space, membership) => fetch(`${base}/spaces/${encodeURIComponent(space)}/members`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(membership) }).then(j),
     submit: (space, entry) => fetch(`${base}/spaces/${encodeURIComponent(space)}/entries`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(entry) }).then(j),
     read: (space, cursor = 0) => fetch(`${base}/spaces/${encodeURIComponent(space)}/entries?cursor=${cursor}`).then(j),
+    del: (space) => fetch(`${base}/spaces/${encodeURIComponent(space)}`, { method: 'DELETE' }).then(j), // teardown (sp-ci-* only)
   }
 }
 
