@@ -47,7 +47,22 @@ prep room, and the assistant's reasoning — are **scripted** (see Scope).
 | [`seat.js`](./seat.js) | Greg's link seat: read + verify every signature + open by his key + post; the `[check this]` widget |
 | [`index.html`](./index.html) · [`seat.html`](./seat.html) · [`style.css`](./style.css) | the two seats |
 | [`_headers`](./_headers) | the enforced CSP — `connect-src` is `self` + `api.witbitz.chat` **only** (the app's true egress) |
-| [`live-e2e.mjs`](./live-e2e.mjs) | a runnable proof (`node live-e2e.mjs`) — drives the **live** Bridge end to end: co-signed crossing accepted + verified; assistant solo submit **`403`**; **tampered body `400`**; **non-member drafter `400`**; **the "upgrade the assistant" attack `403`** (however signed — outsider, Greg, or the assistant itself); replay across space/epoch **refused**; a body unreachable without the key. Each refusal is paired with a **positive control** (a fresh entry at the new epoch / native to B *is* accepted) so "refused" is specific, not "the space broke." Teardown is a **signed** delete; a hiccup is a warning, never a red badge. Run daily by [CI](./.github/workflows/verify.yml). |
+| [`live-e2e.mjs`](./live-e2e.mjs) | a runnable proof (`node live-e2e.mjs`) — drives the **live** Bridge end to end: every server refusal in the first table, plus revocation (pre-signed-transition, no-lockout), downgrade, first-write-wins concurrency, and the delete-token expiry edge. Each refusal is paired with a **positive control** so "refused" is specific, not "the space broke." Run daily by [CI](./.github/workflows/verify.yml). |
+| [`server/`](./server) | **the Bridge server itself** (`bridgeHandler` + `bridgeLog` + `bridgeMembership` + `bridgeSpace`) and its **offline test suite** — so the deterministic proofs a live e2e *can't* show are runnable right here: `node --test server/*.test.mjs` (incl. the **atomic compare-and-set** [`server/bridgeHandler.test.mjs`](./server/bridgeHandler.test.mjs) — a lost race → `409` — and the delete-token **expiry window**). |
+| [`bridgeClient.test.mjs`](./bridgeClient.test.mjs) | interop: the browser client's signatures verified by the **server's own** verifier (`server/bridgeLog.mjs`). |
+
+## Verify it yourself — offline, no network, no keys
+
+```
+node --test server/*.test.mjs bridgeClient.test.mjs   # 40 tests: attribution, membership authz, revocation, the
+                                                       # pre-signed-transition attack, the ATOMIC compare-and-set (409),
+                                                       # the delete-token expiry window, client↔server interop
+node server/verify-guards.mjs                          # deletes each of the 16 security guards in turn and asserts the
+                                                       # suite goes RED — a guard you can remove while tests stay green
+                                                       # has no test. This is why the claims above aren't decorative.
+```
+
+The **live** proof (`node live-e2e.mjs`) can only show what an honest server *does*; these offline tests show what the code *is* — including the two things a client e2e structurally can't (atomicity of the epoch advance; that removing a guard breaks something).
 
 ## Scope — what this demo implements
 

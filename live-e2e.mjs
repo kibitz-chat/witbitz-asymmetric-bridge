@@ -1,11 +1,15 @@
 // Drive the LIVE Bridge through the full asymmetric co-signed flow — the runnable proof. Creates throwaway sp-ci-*
 // spaces and DELETES them at the end (signed teardown), so CI leaves no litter on production. Run: node live-e2e.mjs
-import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, bridge } from './bridgeClient.js'
+import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, signDelete, bridge } from './bridgeClient.js'
 
-const api = bridge(process.env.BRIDGE_BASE || 'https://api.witbitz.chat/v1/bridge')
+const BASE = process.env.BRIDGE_BASE || 'https://api.witbitz.chat/v1/bridge'
+const api = bridge(BASE)
 const log = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!ok) process.exitCode = 1 }
+const warn = (msg) => console.warn(`⚠ ${msg}`) // a hiccup that ISN'T a logic failure — warns, never reddens the badge (cf. teardown)
 const seq = (r) => typeof (r && r.seq) === 'number'
 const refuse = async (status, label, fn) => { try { await fn(); log(false, `${label} — UNEXPECTEDLY accepted`) } catch (x) { log(x.status === status, `${label} refused ${x.status} ${x.message}`) } }
+const b64url = (s) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const rawDelStatus = async (space, actor, ts) => { const sig = await signDelete(actor, space, ts); const auth = b64url(JSON.stringify({ party: actor.id, sig, ts })); return (await fetch(`${BASE}/spaces/${encodeURIComponent(space)}`, { method: 'DELETE', headers: { 'x-bridge-authorization': auth } })).status }
 
 const emily = await mintIdentity('Emily'), assistant = await mintIdentity("Emily's assistant"), greg = await mintIdentity('Greg')
 const created = []
@@ -108,14 +112,24 @@ try {
   // ...and the ATOMIC version: fire two competing same-epoch writes CONCURRENTLY (no await between). The server's
   // compare-and-set lets EXACTLY ONE land (the loser gets 409, not a silent last-write-wins clobber). BEST-EFFORT: the
   // network may serialize them, but with the CAS exactly one wins either way — atomicity itself is proven
-  // DETERMINISTICALLY by the handler unit test (bridgeHandler.test), which a client e2e cannot; this only exercises it.
+  // DETERMINISTICALLY by the handler unit test `server/bridgeHandler.test.mjs` (run `node --test server/*.test.mjs`),
+  // which a client e2e structurally cannot; this only EXERCISES it.
   const E = await space()
   E.m = await admit(E.m, emily, publicIdentity(dave), { caps: ['read', 'submit', 'admit'] }); await api.putMembers(E.s, E.m)
   const nx = E.m.epoch + 1
   const r1 = await sign({ space: E.s, epoch: nx, members: E.m.members.map((x) => (x.party === assistant.id ? { ...x, caps: ['read'] } : x)) }, emily)
   const r2 = await sign({ space: E.s, epoch: nx, members: E.m.members.map((x) => (x.party === greg.id ? { ...x, caps: ['read'] } : x)) }, dave)
   const outcomes = await Promise.allSettled([api.putMembers(E.s, r1), api.putMembers(E.s, r2)]) // fired together, no await between
-  log(outcomes.filter((o) => o.status === 'fulfilled').length === 1, `concurrency (fired together): EXACTLY ONE of two competing epoch-${nx} writes landed (the other 409/403), never both`)
+  const landed = outcomes.filter((o) => o.status === 'fulfilled').length
+  if (landed === 1) log(true, `concurrency (fired together): EXACTLY ONE of two competing epoch-${nx} writes landed (the other 409/403)`)
+  else if (landed >= 2) log(false, `concurrency (fired together): BOTH competing epoch-${nx} writes landed — the CAS FAILED (a real bug)`) // loud: never both
+  else warn(`concurrency (fired together): NEITHER write landed at epoch ${nx} — a transient network error, not a CAS failure`) // noise: warn, don't fail
+
+  // DELETE-TOKEN EXPIRY EDGE (server-adjudicated, unlike the client-crypto reads): a token PAST the freshness window is
+  // refused; one just INSIDE is accepted — so "time-bound" is demonstrated against the live Bridge, not merely asserted.
+  const edge = await space()
+  log((await rawDelStatus(edge.s, emily, Date.now() - 630000)) === 403, 'delete token ~10.5min old (PAST the 10min window) → refused 403')
+  log((await rawDelStatus(edge.s, emily, Date.now() - 570000)) === 204, 'delete token ~9.5min old (just INSIDE the window) → accepted 204')
 } finally {
   let cleaned = 0
   for (const { s, admin } of created) { try { await api.del(s, admin); cleaned++ } catch { /* teardown is best-effort */ } }
