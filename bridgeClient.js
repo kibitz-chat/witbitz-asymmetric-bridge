@@ -87,6 +87,16 @@ export async function admit(membership, actor, invitee, { caps = ['read', 'submi
   next.auth = { party: actor.id, sig: await signStr(actor.sign.priv, membershipCore(next)) }
   return next
 }
+/** Revoke a party at a NEW epoch: mint a fresh key sealed ONLY to the remaining members (the removed party gets no new
+ *  grant → forward-secrecy). The `actor` (which must hold `revoke`) signs the new record. */
+export async function revoke(membership, actor, partyId) {
+  const e = membership.epoch + 1
+  const ke = randKey()
+  const members = await Promise.all(membership.members.filter((m) => m.party !== partyId).map(async (m) => ({ ...m, keyGrants: { ...m.keyGrants, [e]: await sealTo(ke, m.boxPub) } })))
+  const next = { ...membership, epoch: e, members }
+  next.auth = { party: actor.id, sig: await signStr(actor.sign.priv, membershipCore(next)) }
+  return next
+}
 /** The current epoch key as raw bytes, opened with my box private key (null if I hold no grant). */
 export async function epochKeyRaw(membership, identity) {
   const m = membership.members.find((x) => x.party === identity.id)

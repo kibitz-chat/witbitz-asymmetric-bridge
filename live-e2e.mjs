@@ -1,6 +1,6 @@
 // Drive the LIVE Bridge through the full asymmetric co-signed flow — the runnable proof. Creates throwaway sp-ci-*
 // spaces and DELETES them at the end (signed teardown), so CI leaves no litter on production. Run: node live-e2e.mjs
-import { mintIdentity, publicIdentity, openSpace, admit, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, bridge } from './bridgeClient.js'
+import { mintIdentity, publicIdentity, openSpace, admit, revoke, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, bridge } from './bridgeClient.js'
 
 const api = bridge(process.env.BRIDGE_BASE || 'https://api.witbitz.chat/v1/bridge')
 const log = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!ok) process.exitCode = 1 }
@@ -10,7 +10,7 @@ const refuse = async (status, label, fn) => { try { await fn(); log(false, `${la
 const emily = await mintIdentity('Emily'), assistant = await mintIdentity("Emily's assistant"), greg = await mintIdentity('Greg')
 const created = []
 async function space() {
-  const s = 'sp-ci-live-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); created.push(s)
+  const s = 'sp-ci-live-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); created.push({ s, admin: emily })
   let m = await openSpace(s, emily); await api.create(m)
   m = await admit(m, emily, publicIdentity(assistant), { caps: ['read'] })          // read · cannot post
   m = await admit(m, emily, publicIdentity(greg), { caps: ['read', 'submit'] })
@@ -61,9 +61,26 @@ try {
   A.m = await admit(A.m, emily, publicIdentity(await mintIdentity('d')), { caps: ['read'] }); await api.putMembers(A.s, A.m) // epoch boundary
   await refuse(400, 'epoch-boundary replay (old epoch)', async () => api.submit(A.s, e))
   log(seq(await api.submit(A.s, await makeCoSignedEntry(A.m, emily, assistant, { content: 'fresh crossing at the NEW epoch' }))), 'positive control: a fresh crossing at the NEW epoch IS accepted (so "old epoch refused" ≠ "the space broke")')
+
+  // ── REVOCATION + the PRE-SIGNED-TRANSITION attack — the move a reviewer reaches for once the obvious PUT is closed:
+  // a party signs a membership WHILE it holds admit, its admit is revoked, then it submits the stale-but-valid record.
+  const sign = async (rec, who) => ({ ...rec, auth: { party: who.id, sig: await signMembership(who, rec) } })
+  const rogue = await mintIdentity('rogue-admin')
+  const R = await space()
+  R.m = await admit(R.m, emily, publicIdentity(rogue), { caps: ['read', 'submit', 'admit'] }); await api.putMembers(R.s, R.m)
+  const upO = R.m.members.map((x) => (x.party === assistant.id ? { ...x, caps: ['read', 'submit'] } : x)) // "upgrade the assistant"
+  const preNext = await sign({ space: R.s, epoch: R.m.epoch + 1, members: upO }, rogue)   // rogue pre-signs for the next epoch…
+  const preFuture = await sign({ space: R.s, epoch: R.m.epoch + 2, members: upO }, rogue)  // …and a FUTURE one, anticipating the revoke
+  R.m = await revoke(R.m, emily, rogue.id); await api.putMembers(R.s, R.m)                  // emily revokes rogue's admit
+  log((await api.getMembers(R.s)).members.every((x) => x.party !== rogue.id), 'revocation: the revoked admin is gone from the public record')
+  await refuse(403, 'pre-signed upgrade at the next epoch (submitted AFTER the revoke) — loses the monotonic race', async () => api.putMembers(R.s, preNext))
+  await refuse(403, 'pre-signed upgrade at a FUTURE epoch — rogue no longer holds admit in the current head', async () => api.putMembers(R.s, preFuture))
+  await refuse(403, 'no-lockout: even the founder cannot remove the last admit-holder', async () => api.putMembers(R.s, await sign({ space: R.s, epoch: R.m.epoch + 1, members: R.m.members.map((x) => (x.party === emily.id ? { ...x, caps: ['read', 'submit'] } : x)) }, emily)))
+  await refuse(403, 'epoch rollback signed by a legitimate admit-holder (isolates the monotonic guard)', async () => api.putMembers(R.s, await sign({ space: R.s, epoch: R.m.epoch - 1, members: R.m.members }, emily)))
+  log(seq(await api.submit(R.s, await makeCoSignedEntry(R.m, greg, assistant, { content: 'crossing still works post-revocation' }))), 'positive control: a genuine crossing on the post-revocation space IS accepted')
 } finally {
   let cleaned = 0
-  for (const s of created) { try { await api.del(s, emily); cleaned++ } catch { /* teardown is best-effort */ } }
+  for (const { s, admin } of created) { try { await api.del(s, admin); cleaned++ } catch { /* teardown is best-effort */ } }
   if (cleaned === created.length) log(true, `teardown: deleted ${cleaned}/${created.length} self-test spaces (no litter on prod)`)
   else console.warn(`⚠ teardown: deleted ${cleaned}/${created.length} — a transient DELETE hiccup left litter, but every assertion above still passed (a warning, not a failure)`)
   console.log('\nLIVE e2e complete.')
