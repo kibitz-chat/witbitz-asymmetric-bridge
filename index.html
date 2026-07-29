@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>The Asymmetric Bridge — the prep room</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">The Asymmetric Bridge · demo</span>
+    <h1>Third Coast Bakehouse — the prep room</h1>
+    <span class="who">You are <b>Emily</b>, working with your AI assistant. Your keys never leave this browser.</span>
+  </header>
+
+  <div class="cols">
+    <section class="card private">
+      <h2>Your prep room <span class="tag">· private — never crosses</span></h2>
+      <p class="sub">Your brief and your assistant's reasoning stay here. Greg holds no key to this room.</p>
+      <div class="brief" id="brief">Loading…</div>
+      <div class="draft" id="draftArea" style="display:none">
+        <div class="agentnote" id="agentNote"></div>
+        <textarea id="draft" spellcheck="false"></textarea>
+        <div class="row">
+          <button id="approve">Approve &amp; sign — cross to Greg</button>
+          <span class="pill">edit before approving — the judgment is yours</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>The shared thread <span class="pill" id="epoch"></span></h2>
+      <p class="sub">Only messages you approve and sign cross. This is exactly what Greg sees.</p>
+      <div class="thread" id="thread"><div class="empty">Setting up the Bridge…</div></div>
+      <div class="linkbox">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Greg's link — open in another tab to be Greg (no account, no install):</div>
+        <a class="l" id="greglink" href="#">…</a>
+      </div>
+    </section>
+  </div>
+
+  <p class="foot">Real cryptography, live against <code>api.witbitz.chat/v1/bridge</code>. Your assistant is admitted to the
+    Bridge as <b>read · cannot post</b> — it can draft, never cross. The negotiation copy is scripted for the walkthrough;
+    every signature, seal, and crossing is real. <a href="#" id="src">Read the code that touches your data →</a></p>
+</div>
+<script type="module" src="./prep.js"></script>
+</body>
+</html>

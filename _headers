@@ -1,0 +1,4 @@
+/*
+  Content-Security-Policy: default-src 'self'; connect-src 'self' https://api.witbitz.chat; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer

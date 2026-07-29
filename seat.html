@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="build" content="__BUILD__" />
+<title>Third Coast Bakehouse — packaging renewal</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<div class="wrap narrow">
+  <header class="top">
+    <span class="eyebrow">Third Coast Bakehouse · packaging renewal</span>
+    <h1>The thread</h1>
+    <span class="who">You are <b>Greg</b>. No account, no install — this link is your key.</span>
+  </header>
+
+  <section class="card" style="margin-top:16px">
+    <h2>Who's here</h2>
+    <div class="roster" id="roster"></div>
+    <p class="rnote" id="rosterNote"></p>
+  </section>
+
+  <section class="card" style="margin-top:16px">
+    <h2>Messages</h2>
+    <div class="thread" id="thread"><div class="empty">Loading…</div></div>
+    <div class="compose" style="margin-top:14px">
+      <textarea id="compose" placeholder="Reply to Emily…" spellcheck="false"></textarea>
+      <div class="row"><button id="send">Send</button><span class="pill">you sign every message you send</span></div>
+    </div>
+  </section>
+
+  <section class="card verify" style="margin-top:16px">
+    <h2>Verify this app — the code, not the operator</h2>
+    <p class="sub">What this page can talk to, and the build you're running — read off ground truth, not our word.</p>
+    <div class="kv">
+      <span class="k">Egress (connect-src)</span><span class="v" id="vConnect">…</span>
+      <span class="k">Build</span><span class="v" id="vBuild">…</span>
+    </div>
+    <div class="links">
+      <a href="https://github.com/kibitz-chat/witbitz-render">Read the render (~600 lines)</a>
+      <a href="./bridgeClient.js">This app's bridge client</a>
+      <a href="https://docs.witbitz.chat/docs/verify.md">How to verify it yourself</a>
+    </div>
+    <p class="rnote">Emily's private prep room is a different, sealed space — it isn't hidden from you here, it's
+      <b>unreachable</b>: you hold no key to it, so it never renders anywhere.</p>
+  </section>
+
+  <p class="foot">Real cryptography, live against <code>api.witbitz.chat/v1/bridge</code>. The negotiation copy is
+    scripted for the walkthrough; every signature, seal, and crossing is real.</p>
+</div>
+
+<div class="pop" id="pop">
+  <div class="box">
+    <h3 id="popTitle"></h3>
+    <div id="popBody"></div>
+    <div class="x"><button class="ghost" id="popClose">Close</button></div>
+  </div>
+</div>
+
+<script type="module" src="./seat.js"></script>
+</body>
+</html>
