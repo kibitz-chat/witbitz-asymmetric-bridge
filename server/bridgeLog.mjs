@@ -1,4 +1,4 @@
-// server/bridgeLog.mjs — the Bridge Protocol's data plane (the Bridge protocol): SIGNED, epoch-tagged entries, a
+// agent/bridgeLog.mjs — the Bridge Protocol's data plane (docs/bridge-protocol.md): SIGNED, epoch-tagged entries, a
 // hash-chained append-only log, and a server-signed CHECKPOINT. This is what makes the audit trustless:
 //   · ATTRIBUTION — the CLIENT signs each entry with its party key (ECDSA); the platform verifies against the public
 //     membership record, ON CIPHERTEXT (it never reads `body`). No party can speak as another.
@@ -70,7 +70,7 @@ export async function verifyAttribution(membership, entry) {
 export const membershipCore = (m) => canon({ space: m.space, epoch: m.epoch, members: m.members })
 /** CLIENT: an admit/revoke-capable actor signs the new membership record. */
 export async function signMembership(actorSignPriv, membership) { return signStr(actorSignPriv, membershipCore(membership)) }
-/** SERVER: is `next` a LEGAL SUCCESSOR of the current head `cur`? This is a DELIBERATE policy (the Bridge protocol
+/** SERVER: is `next` a LEGAL SUCCESSOR of the current head `cur`? This is a DELIBERATE policy (docs/bridge-protocol.md
  *  §membership-succession), not merely "internally consistent + signed":
  *   · same space, strictly-advancing epoch — monotonic, so an OLDER record can't be replayed;
  *   · signed by a party holding `admit` IN `cur` — authority is re-checked at APPLY time against the CURRENT head, never
@@ -95,7 +95,7 @@ export async function verifyMembershipUpdate(cur, next) {
  *  against, so it must at least be SIGNED by the founder it names: epoch 0 · ≥1 admit-holder · signed by an admit-holder.
  *  So no one can found a space in ANOTHER party's name (the named founder's key must sign). It does NOT by itself stop
  *  id-squatting — whoever creates an unclaimed id FIRST owns it (409 on re-create). The product must therefore mint the
- *  space id AT create as a commitment to the founder, never pre-share it (the Bridge protocol §Founding). */
+ *  space id AT create as a commitment to the founder, never pre-share it (docs/bridge-protocol.md §Founding). */
 export async function verifyCreate(membership) {
   if (!membership || !membership.auth || !Array.isArray(membership.members) || membership.epoch !== 0) return false
   if (!membership.members.some((x) => Array.isArray(x.caps) && x.caps.includes('admit'))) return false
@@ -160,4 +160,36 @@ export async function verifyCheckpoint(serverPub, cp) { const { sig, ...core } =
 export async function chainMatchesCheckpoint(log, cp) {
   const headHash = log.length ? await storedHash(log[log.length - 1]) : ''
   return headHash === cp.headHash && log.length - 1 === cp.headSeq
+}
+
+// ── GOSSIP — cross-party EQUIVOCATION detection ──────────────────────────────────────────────────────────────────────
+// chainMatchesCheckpoint catches a server that rewrote history in MY OWN view. It does NOT catch EQUIVOCATION: a server
+// serving two internally-consistent but DIFFERENT logs to two parties. The server can't forge entries (they're
+// party-signed), but the party signature covers only the entry CORE — NOT the server-assigned seq/at/prevHash — so a
+// malicious server can freely REORDER/DROP real entries, re-chain, and sign a checkpoint for each fork. Each fork passes
+// its own chainMatchesCheckpoint; neither party can tell ALONE. It is caught only by COMPARING the checkpoints two
+// parties pinned + gossip — and when it is, the server is convicted by its OWN signatures. These are the comparison.
+
+/** Does a (server-signed) checkpoint agree with MY log at its head-seq? 'consistent' | 'conflict' (its head is NOT on my
+ *  chain → equivocation) | 'ahead' (its head is beyond my log — I can't refute it yet). */
+export async function checkpointConsistentWithLog(log, cp) {
+  if (!cp) return 'conflict'
+  if (cp.headSeq < 0) return log.length === 0 ? 'consistent' : 'conflict'
+  if (cp.headSeq > log.length - 1) return 'ahead' // their head is past mine — no proof either way
+  return (await storedHash(log[cp.headSeq])) === cp.headHash ? 'consistent' : 'conflict'
+}
+
+/** Two checkpoints for the SAME space+epoch at the SAME head-seq committing to DIFFERENT heads = a provable fork,
+ *  LOG-FREE. (Different seqs are not decidable here — use checkpointConsistentWithLog against a log spanning both.) */
+export function checkpointsConflict(cpA, cpB) {
+  if (!cpA || !cpB || cpA.space !== cpB.space || cpA.epoch !== cpB.epoch) return false
+  return cpA.headSeq === cpB.headSeq && cpA.headHash !== cpB.headHash
+}
+
+/** PROOF of equivocation: two checkpoints that CONFLICT and are BOTH genuinely the server's. Anyone holding the server's
+ *  public key verifies it — the operator is convicted by its own two signatures over one space's two conflicting heads.
+ *  A party CANNOT frame an honest server: a forged conflicting checkpoint isn't the server's, so verifyCheckpoint fails. */
+export async function verifyEquivocationProof(serverPub, cpA, cpB) {
+  if (!checkpointsConflict(cpA, cpB)) return false
+  return (await verifyCheckpoint(serverPub, cpA)) && (await verifyCheckpoint(serverPub, cpB))
 }

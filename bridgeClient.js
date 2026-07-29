@@ -158,6 +158,37 @@ export async function openEntry(membership, identity, entry) {
   try { return await openBody(new Uint8Array(await openBox(grant, identity.box.priv)), entry.body) } catch { return null }
 }
 
+// ── audit / gossip (the party side of the checkpoint layer) ──────────────────────────────────────────────────────────
+// The hash a checkpoint commits to — the stored entry form (incl. the server-assigned seq/at/prevHash). Must match the
+// server's bridgeLog.storedHash byte-for-byte.
+async function storedHash(e) { return sha256b64(canon({ ...entryCore(e), sig: e.sig, draft: e.draft || null, seq: e.seq, at: e.at, prevHash: e.prevHash })) }
+/** A pinned checkpoint vs the log the server served ME: does its head match? (Catches a server that lied about its head
+ *  vs the entries it gave me.) Does NOT catch equivocation — that needs comparing against ANOTHER party's checkpoint. */
+export async function chainMatchesCheckpoint(log, cp) {
+  const headHash = log.length ? await storedHash(log[log.length - 1]) : ''
+  return headHash === cp.headHash && log.length - 1 === cp.headSeq
+}
+/** Verify a checkpoint is genuinely the server's (needs the server's checkpoint pubkey, obtained out-of-band). */
+export async function verifyCheckpoint(serverPub, cp) { const { sig, ...core } = cp; return verifyStr(serverPub, sig, canon(core)) }
+/** GOSSIP: does another party's (server-signed) checkpoint agree with MY log at its head-seq?
+ *  'consistent' | 'conflict' (its head is NOT on my chain → EQUIVOCATION) | 'ahead' (beyond my log — can't refute yet). */
+export async function checkpointConsistentWithLog(log, cp) {
+  if (!cp) return 'conflict'
+  if (cp.headSeq < 0) return log.length === 0 ? 'consistent' : 'conflict'
+  if (cp.headSeq > log.length - 1) return 'ahead'
+  return (await storedHash(log[cp.headSeq])) === cp.headHash ? 'consistent' : 'conflict'
+}
+/** Two checkpoints for the same space+epoch at the same head-seq committing to DIFFERENT heads = a provable fork. */
+export function checkpointsConflict(cpA, cpB) {
+  if (!cpA || !cpB || cpA.space !== cpB.space || cpA.epoch !== cpB.epoch) return false
+  return cpA.headSeq === cpB.headSeq && cpA.headHash !== cpB.headHash
+}
+/** PROOF of equivocation: two CONFLICTING checkpoints both genuinely the server's — the operator convicted by its sigs. */
+export async function verifyEquivocationProof(serverPub, cpA, cpB) {
+  if (!checkpointsConflict(cpA, cpB)) return false
+  return (await verifyCheckpoint(serverPub, cpA)) && (await verifyCheckpoint(serverPub, cpB))
+}
+
 // ── HTTP binding (the Bridge REST API) ──────────────────────────────────────────────────────────────────────────────
 export function bridge(base) {
   const j = async (r) => { const t = await r.text(); let d = {}; try { d = t ? JSON.parse(t) : {} } catch { /* */ } if (!r.ok) throw Object.assign(new Error(d.error || r.status), { status: r.status, data: d }); return d }
@@ -167,6 +198,8 @@ export function bridge(base) {
     putMembers: (space, membership) => fetch(`${base}/spaces/${encodeURIComponent(space)}/members`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(membership) }).then(j),
     submit: (space, entry) => fetch(`${base}/spaces/${encodeURIComponent(space)}/entries`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(entry) }).then(j),
     read: (space, cursor = 0) => fetch(`${base}/spaces/${encodeURIComponent(space)}/entries?cursor=${cursor}`).then(j),
+    checkpoint: (space) => fetch(`${base}/spaces/${encodeURIComponent(space)}/checkpoint`).then(j), // the server-signed head, to pin + gossip
+
     del: async (space, actor) => { // teardown (sp-ci-* only) — a current admit-holder signs a FRESH, time-bound authorization
       const ts = Date.now()
       const sig = await signDelete(actor, space, ts)

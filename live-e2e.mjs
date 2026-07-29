@@ -1,6 +1,6 @@
 // Drive the LIVE Bridge through the full asymmetric co-signed flow — the runnable proof. Creates throwaway sp-ci-*
 // spaces and DELETES them at the end (signed teardown), so CI leaves no litter on production. Run: node live-e2e.mjs
-import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, signDelete, bridge } from './bridgeClient.js'
+import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, signDelete, chainMatchesCheckpoint, bridge } from './bridgeClient.js'
 
 const BASE = process.env.BRIDGE_BASE || 'https://api.witbitz.chat/v1/bridge'
 const api = bridge(BASE)
@@ -65,6 +65,13 @@ try {
   A.m = await admit(A.m, emily, publicIdentity(await mintIdentity('d')), { caps: ['read'] }); await api.putMembers(A.s, A.m) // epoch boundary
   await refuse(400, 'epoch-boundary replay (old epoch)', async () => api.submit(A.s, e))
   log(seq(await api.submit(A.s, await makeCoSignedEntry(A.m, emily, assistant, { content: 'fresh crossing at the NEW epoch' }))), 'positive control: a fresh crossing at the NEW epoch IS accepted (so "old epoch refused" ≠ "the space broke")')
+
+  // CHECKPOINT — the honest live server's SIGNED head matches the log it served ME (catches a server lying about its
+  // head vs its entries). Cross-party EQUIVOCATION (forking the log to two parties) is a DISHONEST-server property — the
+  // live Bridge is honest, so detection is demonstrated OFFLINE (server/bridge.equivocation.test.mjs).
+  const cp = await api.checkpoint(A.s)
+  const full = (await api.read(A.s, 0)).entries
+  log(await chainMatchesCheckpoint(full, cp), `checkpoint: the live server's signed head matches the ${full.length}-entry log it served me (headSeq ${cp.headSeq})`)
 
   // ── REVOCATION + the PRE-SIGNED-TRANSITION attack — the move a reviewer reaches for once the obvious PUT is closed:
   // a party signs a membership WHILE it holds admit, its admit is revoked, then it submits the stale-but-valid record.
