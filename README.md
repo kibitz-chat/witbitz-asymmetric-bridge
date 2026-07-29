@@ -9,18 +9,28 @@ The assistant is admitted to the shared Bridge as **read · cannot post** — it
 Every message that reaches the supplier (**Greg**) is one Emily *approved and signed*. Greg has no account and no
 install — a link is his key — and everything he's asked to believe, he can check himself:
 
-| Claim | How you check it (all exercised by `live-e2e.mjs`) |
-|---|---|
-| The assistant can't put anything in front of Greg | `read`, not `submit` in the **public** membership; its solo submit is refused **`403`** |
-| …and it can't be *promoted* behind Emily's back | an outsider — or Greg — PUTting a membership that upgrades the assistant to `submit` is refused **`403`**; only a **current `admit`-holder's signature** re-caps anyone (the server verifies it, independently) |
-| Every message is Emily's, co-authored by the assistant | **two** signatures on the crossing, resolving against the public keys |
-| The signatures **bind** the content | altering a crossed message's body is refused **`400`** — present ≠ binding |
-| The drafter attribution isn't decorative | a co-signature naming a **non-member** is refused **`400`** |
-| The content is confidential — not the feed | the feed is public ciphertext; a body is **unreachable** without the key |
+**What the live Bridge *adjudicates*** — a bad request gets a `4xx` from `api.witbitz.chat`, decided server-side. Each is paired in `live-e2e.mjs` with a **positive control** (the legitimate version *is* accepted), so "refused" is specific, not "the space broke":
 
-Every signature, seal, epoch key, cap, and integrity check is **real**, run client-side against the live Bridge at
-`api.witbitz.chat/v1/bridge`; keys never leave the browser. The negotiation copy — and the prep room, and the
-assistant's reasoning — are **scripted** (see Scope).
+| Claim | How the server refuses it |
+|---|---|
+| The assistant can't put anything in front of Greg | its solo submit → **`403`** (`read`, not `submit`, in the public membership) |
+| …and it can't be *promoted* behind Emily's back | a PUT upgrading it — however signed (outsider, Greg, or the assistant itself) — → **`403`**; only a current `admit`-holder's signature re-caps |
+| A space can't be founded in someone else's name | an unsigned/forged `create` → **`403`**; re-creating an existing id → **`409`** (first-create-wins) |
+| A crossing can't be forged, tampered, or replayed | bad signature / altered body / non-member co-signer → **`400`**; replay across space or epoch → refused |
+| A revoked admin can't reach back in | a record it pre-signed while it held `admit` → **`403`** after revocation; removing the last admit → **`403`**; a same-epoch race can't silently undo a revocation → **`403`** (first-write-wins) |
+| Teardown is authorized + time-bound | a delete without a current admit-holder's **fresh** signature → **`403`** (the authorization expires; it rides in a header, not the URL) |
+
+**What *you* verify yourself, client-side** — these hold *even if the server misbehaves*, because the platform never sees the plaintext. They are your own decryptions (`openEntry`), not something the Bridge adjudicates:
+
+| Claim | How you check it locally |
+|---|---|
+| Every message is Emily's, co-authored by the assistant | the **two** signatures resolve against the public keys |
+| The content is confidential — not the feed | the feed is public ciphertext; a body is **unreachable** without the epoch key you hold |
+| Revocation protects the future, not the past | a revoked party still opens what it already held, but **never** the new epoch key — credible *because* it isn't absolute |
+| A downgraded member is read-only, not blinded | stripped of `submit`, Greg is refused writes yet still **reads** new content (kept `read` + the new key) |
+
+Every signature, seal, epoch key, and cap is **real** and keys never leave the browser. The negotiation copy — and the
+prep room, and the assistant's reasoning — are **scripted** (see Scope).
 
 ## The files (this is the whole app — read it)
 

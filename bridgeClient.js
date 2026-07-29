@@ -72,7 +72,9 @@ const randKey = () => crypto.getRandomValues(new Uint8Array(32))
 /** Found a shared space: the founder is the first member, epoch 0, key sealed to the founder's box. */
 export async function openSpace(space, founder, { caps = ALL_CAPS } = {}) {
   const k0 = randKey()
-  return { space, epoch: 0, members: [{ ...publicIdentity(founder), caps, keyGrants: { 0: await sealTo(k0, founder.box.pub) } }] }
+  const rec = { space, epoch: 0, members: [{ ...publicIdentity(founder), caps, keyGrants: { 0: await sealTo(k0, founder.box.pub) } }] }
+  rec.auth = { party: founder.id, sig: await signStr(founder.sign.priv, membershipCore(rec)) } // the founder SIGNS the genesis record → server-verifiable create
+  return rec
 }
 // The authoritative membership content the actor signs (caps + grants + epoch + space) — never `auth` itself.
 const membershipCore = (m) => canon({ space: m.space, epoch: m.epoch, members: m.members })
@@ -165,16 +167,17 @@ export function bridge(base) {
     putMembers: (space, membership) => fetch(`${base}/spaces/${encodeURIComponent(space)}/members`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(membership) }).then(j),
     submit: (space, entry) => fetch(`${base}/spaces/${encodeURIComponent(space)}/entries`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(entry) }).then(j),
     read: (space, cursor = 0) => fetch(`${base}/spaces/${encodeURIComponent(space)}/entries?cursor=${cursor}`).then(j),
-    del: async (space, actor) => { // teardown (sp-ci-* only) — a current admit-holder signs a FRESH, body-carried authorization
-      const ts = Date.now(), nonce = b64u(crypto.getRandomValues(new Uint8Array(12)))
-      const sig = await signDelete(actor, space, ts, nonce)
-      return fetch(`${base}/spaces/${encodeURIComponent(space)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ party: actor.id, sig, ts, nonce }) }).then(j)
+    del: async (space, actor) => { // teardown (sp-ci-* only) — a current admit-holder signs a FRESH, time-bound authorization
+      const ts = Date.now()
+      const sig = await signDelete(actor, space, ts)
+      const auth = b64u(enc.encode(JSON.stringify({ party: actor.id, sig, ts }))) // in a HEADER (sturdier than a DELETE body), out of the URL
+      return fetch(`${base}/spaces/${encodeURIComponent(space)}`, { method: 'DELETE', headers: { 'x-bridge-authorization': auth } }).then(j)
     },
   }
 }
 
 /** Sign a teardown authorization for `space` (bound to the space id) — the actor must hold `admit` server-side. */
-export async function signDelete(actor, space, ts, nonce) { return signStr(actor.sign.priv, canon({ op: 'delete', space, ts, nonce })) }
+export async function signDelete(actor, space, ts) { return signStr(actor.sign.priv, canon({ op: 'delete', space, ts })) }
 
 /** Sign a membership record as `actor` (for crafting/attacking updates in tests). admit()/revoke() set `auth` themselves. */
 export async function signMembership(actor, membership) { return signStr(actor.sign.priv, membershipCore(membership)) }

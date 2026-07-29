@@ -93,6 +93,18 @@ try {
   await refuse(403, 'the downgraded member (submit→read) can no longer submit', async () => api.submit(D.s, await makeEntry(D.m, greg, { content: 'i lost submit' })))
   const dShared = await makeCoSignedEntry(D.m, emily, assistant, { content: 'shared after downgrade' }); await api.submit(D.s, dShared)
   log((await openEntry(D.m, greg, dShared)) === 'shared after downgrade', 'downgrade: but the downgraded member STILL reads new content (kept read + the new key)')
+
+  // CONCURRENCY — two admit-holders racing at the SAME epoch is resolved FIRST-WRITE-WINS by the monotonic guard, so a
+  // revocation cannot be silently UNDONE by racing it; reverting requires a fresh (auditable) epoch, not a same-epoch race.
+  const dave = await mintIdentity('dave-admin')
+  const C = await space()
+  C.m = await admit(C.m, emily, publicIdentity(dave), { caps: ['read', 'submit', 'admit'] }); await api.putMembers(C.s, C.m)
+  const raceEpoch = C.m.epoch + 1
+  const emilyRevoke = await revoke(C.m, emily, greg.id)                                            // epoch raceEpoch — greg removed
+  const daveKeepGreg = await sign({ space: C.s, epoch: raceEpoch, members: C.m.members }, dave)    // SAME epoch — dave re-affirms greg
+  log((await api.putMembers(C.s, emilyRevoke)).epoch === raceEpoch, `concurrency: emily's revoke landed first at epoch ${raceEpoch}`)
+  await refuse(403, "a competing same-epoch record (dave re-adding greg) can't silently undo the revocation — first-write-wins", async () => api.putMembers(C.s, daveKeepGreg))
+  log((await api.getMembers(C.s)).members.every((x) => x.party !== greg.id), 'concurrency: greg stays revoked — reverting needs a fresh epoch (auditable), not a race')
 } finally {
   let cleaned = 0
   for (const { s, admin } of created) { try { await api.del(s, admin); cleaned++ } catch { /* teardown is best-effort */ } }
