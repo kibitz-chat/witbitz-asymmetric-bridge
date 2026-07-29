@@ -2,8 +2,8 @@
 // and the asymmetric-demo invariants must hold. Runs in Node (the client uses only globals Node ≥20 also has).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { verifyAttribution as serverVerify, submit as serverSubmit, verifyMembershipUpdate as serverVerifyMembership, signMembership } from './server/bridgeLog.mjs'
-import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeEntry, makeCoSignedEntry, verifyEntry, openEntry } from './bridgeClient.js'
+import { verifyAttribution as serverVerify, submit as serverSubmit, verifyMembershipUpdate as serverVerifyMembership, signMembership, checkpoint, genServerKey } from './server/bridgeLog.mjs'
+import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeEntry, makeCoSignedEntry, verifyEntry, openEntry, auditAgainstPeer, verifyEquivocationProof } from './bridgeClient.js'
 
 test('web client ↔ server verifier: a co-signed crossing verifies, the read-only drafter can never cross alone, a body is unreachable without the key', async () => {
   const emily = await mintIdentity('Emily')                          // submit (approver)
@@ -90,4 +90,27 @@ test('downgrade (recap): a member stripped of submit but kept cannot write, stil
 
   assert.equal((await serverSubmit([], m, await makeEntry(m, greg, { content: 'after' }))).error, 'no_submit_cap', 'the downgraded member cannot write')
   assert.equal(await openEntry(m, greg, await makeCoSignedEntry(m, emily, assistant, { content: 'shared after downgrade' })), 'shared after downgrade', 'but STILL reads new content — he kept read + the new epoch key')
+})
+
+// ── GOSSIP interop: the browser client's auditAgainstPeer detects a fork the SERVER built, and the proof it produces
+// verifies against the server key — client audit ↔ server signing, the transport end to end.
+test('gossip: the browser client flags a server-side fork and the proof it produces verifies against the server key', async () => {
+  const em = await mintIdentity('Emily'), gr = await mintIdentity('Greg'), as = await mintIdentity('assistant')
+  let mm = await openSpace('sp-gossip-interop', em)
+  mm = await admit(mm, em, publicIdentity(as), { caps: ['read'] })
+  mm = await admit(mm, em, publicIdentity(gr), { caps: ['read', 'submit'] })
+  const srv = await genServerKey()
+  const x1 = await makeEntry(mm, em, { content: 'a' }), x2 = await makeEntry(mm, gr, { content: 'b' }), x3 = await makeEntry(mm, em, { content: 'c' })
+  const build = async (order) => { let log = [], now = 0; for (const e of order) { const r = await serverSubmit(log, mm, e, { now: ++now }); log = r.log } return log }
+  const emilyLog = await build([x1, x2, x3]), gregLog = await build([x1, x3, x2]) // the server serves two orders
+  const cpE = await checkpoint(srv, emilyLog, { space: mm.space, epoch: mm.epoch, now: 100 })
+  const cpG = await checkpoint(srv, gregLog, { space: mm.space, epoch: mm.epoch, now: 100 })
+
+  const flag = await auditAgainstPeer(emilyLog, cpE, cpG) // Emily's client audits Greg's out-of-band checkpoint
+  assert.equal(flag.equivocation, true, "the client flags Greg's pinned head as not on Emily's chain")
+  assert.ok(flag.proof, 'and packages a proof')
+  assert.equal(await verifyEquivocationProof(srv.pub, flag.proof.cpA, flag.proof.cpB), true, 'which verifies against the server key (client ↔ server byte-compatible)')
+  // honest control: two views of the SAME log raise no flag
+  const same = await auditAgainstPeer(emilyLog, cpE, await checkpoint(srv, emilyLog, { space: mm.space, epoch: mm.epoch, now: 100 }))
+  assert.equal(same.equivocation, false, 'same head → no false alarm')
 })

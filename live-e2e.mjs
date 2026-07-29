@@ -1,6 +1,6 @@
 // Drive the LIVE Bridge through the full asymmetric co-signed flow — the runnable proof. Creates throwaway sp-ci-*
 // spaces and DELETES them at the end (signed teardown), so CI leaves no litter on production. Run: node live-e2e.mjs
-import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, signDelete, chainMatchesCheckpoint, bridge } from './bridgeClient.js'
+import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, signDelete, chainMatchesCheckpoint, auditAgainstPeer, bridge } from './bridgeClient.js'
 
 const BASE = process.env.BRIDGE_BASE || 'https://api.witbitz.chat/v1/bridge'
 const api = bridge(BASE)
@@ -72,6 +72,15 @@ try {
   const cp = await api.checkpoint(A.s)
   const full = (await api.read(A.s, 0)).entries
   log(await chainMatchesCheckpoint(full, cp), `checkpoint: the live server's signed head matches the ${full.length}-entry log it served me (headSeq ${cp.headSeq})`)
+
+  // GOSSIP TRANSPORT (honest round-trip) — Emily and Greg each PIN the head the server showed them, then exchange those
+  // checkpoints over a SIDE CHANNEL independent of the Bridge (routing gossip THROUGH the audited server would let it
+  // equivocate on the gossip too), and each audits the peer's pinned head against its own log. Honest server → they
+  // pinned the same head → no alarm. A FORKING server is a dishonest-server property, so it's proven OFFLINE
+  // (server/bridge.gossip.test.mjs: auto-flag + a proof a third party verifies with only the server's key).
+  const cpE = await api.checkpoint(A.s), cpG = await api.checkpoint(A.s) // each party pins its own view
+  const verdict = await auditAgainstPeer(full, cpE, cpG)                 // Emily audits Greg's pinned checkpoint (received out-of-band)
+  log(verdict.verdict === 'consistent' && !verdict.equivocation, 'gossip: Emily and Greg pinned the SAME head — no equivocation on the honest live Bridge (a fork is caught offline, with a proof)')
 
   // ── REVOCATION + the PRE-SIGNED-TRANSITION attack — the move a reviewer reaches for once the obvious PUT is closed:
   // a party signs a membership WHILE it holds admit, its admit is revoked, then it submits the stale-but-valid record.

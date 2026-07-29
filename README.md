@@ -48,15 +48,16 @@ prep room, and the assistant's reasoning — are **scripted** (see Scope).
 | [`index.html`](./index.html) · [`seat.html`](./seat.html) · [`style.css`](./style.css) | the two seats |
 | [`_headers`](./_headers) | the enforced CSP — `connect-src` is `self` + `api.witbitz.chat` **only** (the app's true egress) |
 | [`live-e2e.mjs`](./live-e2e.mjs) | a runnable proof (`node live-e2e.mjs`) — drives the **live** Bridge end to end: every server refusal in the first table, plus revocation (pre-signed-transition, no-lockout), downgrade, first-write-wins concurrency, and the delete-token expiry edge. Each refusal is paired with a **positive control** so "refused" is specific, not "the space broke." Run daily by [CI](./.github/workflows/verify.yml). |
-| [`server/`](./server) | **the Bridge server itself** (`bridgeHandler` + `bridgeLog` + `bridgeMembership` + `bridgeSpace`) and its **offline test suite** — so the deterministic proofs a live e2e *can't* show are runnable right here: `node --test server/*.test.mjs` (incl. the **atomic compare-and-set** [`server/bridgeHandler.test.mjs`](./server/bridgeHandler.test.mjs) — a lost race → `409`; the delete-token **expiry window**; and **equivocation detection** [`server/bridge.equivocation.test.mjs`](./server/bridge.equivocation.test.mjs) — a server forking the log to two parties, caught by comparing pinned checkpoints). |
+| [`server/`](./server) | **the Bridge server itself** (`bridgeHandler` + `bridgeLog` + `bridgeMembership` + `bridgeSpace`) and its **offline test suite** — so the deterministic proofs a live e2e *can't* show are runnable right here: `node --test server/*.test.mjs` (incl. the **atomic compare-and-set** [`server/bridgeHandler.test.mjs`](./server/bridgeHandler.test.mjs) — a lost race → `409`; the delete-token **expiry window**; and **equivocation detection + gossip** [`server/bridge.equivocation.test.mjs`](./server/bridge.equivocation.test.mjs) · [`server/bridge.gossip.test.mjs`](./server/bridge.gossip.test.mjs) — a server forking the log to two parties, caught when they exchange pinned checkpoints, with a proof a third party verifies). |
 | [`bridgeClient.test.mjs`](./bridgeClient.test.mjs) | interop: the browser client's signatures verified by the **server's own** verifier (`server/bridgeLog.mjs`). |
 
 ## Verify it yourself — offline, no network, no keys
 
 ```
-node --test server/*.test.mjs bridgeClient.test.mjs   # 44 tests: attribution, membership authz, revocation, the
+node --test server/*.test.mjs bridgeClient.test.mjs   # 48 tests: attribution, membership authz, revocation, the
                                                        # pre-signed-transition attack, the ATOMIC compare-and-set (409),
-                                                       # the delete-token expiry window, EQUIVOCATION detection, interop
+                                                       # the delete-token expiry window, EQUIVOCATION detection + the
+                                                       # GOSSIP transport (a third party verifies the proof), interop
 node server/verify-guards.mjs                          # deletes each of the 16 security guards in turn and asserts the
                                                        # suite goes RED — a guard you can remove while tests stay green
                                                        # has no test. This is why the claims above aren't decorative.
@@ -64,7 +65,7 @@ node server/verify-guards.mjs                          # deletes each of the 16 
 
 The **live** proof (`node live-e2e.mjs`) can only show what an honest server *does*; these offline tests show what the code *is* — including the two things a client e2e structurally can't (atomicity of the epoch advance; that removing a guard breaks something).
 
-> **One honest caveat.** [`server/`](./server) is the **source**. `live-e2e.mjs` shows the Bridge deployed at `api.witbitz.chat` behaving *identically* to it — strong **evidence**, but not **attestation**: nothing here cryptographically binds the running binary to this exact code. **Equivocation is now *detectable*:** a dishonest operator that serves Emily and Greg different logs is caught when they gossip the checkpoints they pinned — `verifyEquivocationProof` convicts the server by *its own two signatures* ([`server/bridge.equivocation.test.mjs`](./server/bridge.equivocation.test.mjs)). Still designed-not-built: binding the running binary to this source (attestation), the out-of-band gossip *transport*, and a public transparency log.
+> **One honest caveat.** [`server/`](./server) is the **source**. `live-e2e.mjs` shows the Bridge deployed at `api.witbitz.chat` behaving *identically* to it — strong **evidence**, but not **attestation**: nothing here cryptographically binds the running binary to this exact code. **Equivocation is now *detectable*, end to end:** a dishonest operator that serves Emily and Greg different logs is caught when they **gossip** the checkpoints they pinned — the flow (pin → exchange over a channel *independent of the audited server* → auto-flag) is built ([`server/bridge.gossip.test.mjs`](./server/bridge.gossip.test.mjs); mirrored in the client's `auditAgainstPeer`), and on a fork the proof is **self-authenticating**: a third party who trusts *neither* party is convinced with only the server's key — `verifyEquivocationProof` convicts the operator by its own two signatures. Still designed-not-built: binding the running binary to this source (attestation), the *physical* out-of-band channel in a deployment (the demo simulates it), and a public transparency log.
 
 ## Scope — what this demo implements
 

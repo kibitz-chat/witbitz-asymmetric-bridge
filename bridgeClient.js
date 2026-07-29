@@ -188,6 +188,17 @@ export async function verifyEquivocationProof(serverPub, cpA, cpB) {
   if (!checkpointsConflict(cpA, cpB)) return false
   return (await verifyCheckpoint(serverPub, cpA)) && (await verifyCheckpoint(serverPub, cpB))
 }
+/** GOSSIP RECEIVER — the party side of the transport. A peer hands me the checkpoint IT pinned, over a side channel
+ *  INDEPENDENT of the audited server (routing gossip through the Bridge would let a malicious server equivocate on the
+ *  gossip too). I compare it to MY log + MY pinned checkpoint and auto-flag. On a same-seq conflict the `proof` is two
+ *  server signatures — a third party who trusts NEITHER of us verifies it with verifyEquivocationProof(serverPub, …). */
+export async function auditAgainstPeer(myLog, myCheckpoint, peerCheckpoint) {
+  const verdict = await checkpointConsistentWithLog(myLog, peerCheckpoint) // 'consistent' | 'conflict' | 'ahead'
+  const proof = (verdict === 'conflict' && myCheckpoint && checkpointsConflict(myCheckpoint, peerCheckpoint))
+    ? { space: peerCheckpoint.space, epoch: peerCheckpoint.epoch, cpA: myCheckpoint, cpB: peerCheckpoint }
+    : null
+  return { verdict, equivocation: verdict === 'conflict', proof }
+}
 
 // ── HTTP binding (the Bridge REST API) ──────────────────────────────────────────────────────────────────────────────
 export function bridge(base) {
