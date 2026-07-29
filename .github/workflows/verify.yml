@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: '20'
       - name: Offline suite (deterministic — no network, no keys)
-        run: node --test server/*.test.mjs bridgeClient.test.mjs
+        run: node --test server/*.test.mjs *.test.mjs
       - name: Guards are load-bearing (mutation harness)
         run: node server/verify-guards.mjs
       - name: Drive the live Bridge end to end

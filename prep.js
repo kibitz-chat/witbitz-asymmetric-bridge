@@ -1,31 +1,30 @@
 // prep.js — Emily's seat: the private prep room. Founds the Bridge, mints the parties, admits the assistant as
 // read-only, and crosses only what Emily approves + signs (a CO-SIGNED entry). All keys stay in this browser.
 import { mintIdentity, publicIdentity, openSpace, admit, makeCoSignedEntry, verifyEntry, openEntry, bridge } from './bridgeClient.js'
+import { EMILY_BRIEF, sealPrepRoom, openPrepRoom, assistantDraft } from './prepRoom.js'
 const BASE = 'https://api.witbitz.chat/v1/bridge'
 const api = bridge(BASE)
 const $ = (id) => document.getElementById(id)
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
 
-const BRIEF = `Need ≤ $0.395 to hold margin on the Ferndale wholesale contract.
-Absolute ceiling $0.415. Ridgeline quoted $0.40 but six-week lead — a real
-problem in Q4; don't want to switch mid-ramp.
-Greg doesn't know about Ferndale (volume rising ~40%, we're locked to deliver).`
+// Emily's prep room renders here — HER eyes only. It is sealed to her key (below) and never sent to the Bridge.
+const ROUNDS = 3
+function renderBrief(b) {
+  return `<div style="font-size:12px;color:#0a7;font-weight:600;margin-bottom:8px">🔒 Sealed to Emily · never crosses the Bridge</div>
+    <p><b>Goal.</b> ${esc(b.goal)}</p>
+    <p><b>Price.</b> target ${esc(b.target)} · midpoint ${esc(b.midpoint)} · <span style="color:#c00">ceiling ${esc(b.ceiling)} — never reveal</span></p>
+    <p><b>Leverage.</b> ${esc(b.leverage)}</p>
+    <p><b>Reference.</b> ${esc(b.reference)}</p>
+    <p><b>Priority.</b> ${esc(b.priority)}</p>
+    <p><b>Documents.</b> ${b.documents.map(esc).join(' · ')}</p>`
+}
 
-// The scripted assistant: a private reasoning note + a draft, per round.
-const SCRIPT = [
-  { note: `Your leverage is <b>volume, not price history</b>. A firm higher annual minimum is worth real money to a family firm with idle capacity — and it costs you nothing, since Ferndale guarantees the volume. Open at $0.375 against 500k. Mention the $0.40 quote as a market reference, not a threat.`,
-    draft: `Greg — renewal's up and I'd like to keep it with you. Straight ask: $0.375 a unit. In exchange I'll commit to a 500,000-unit annual minimum, up from the 350,000 we've been running. That's real certainty for your production planning. I've got a $0.40 quote in hand, but I'd rather not move — you've never missed a delivery in four years and that's worth something. Can you work with the volume?` },
-  { note: `He moved 1.5¢ on the first exchange and <b>volunteered a capacity constraint</b> he didn't have to. That's a supplier who wants this closed. The eight-week lead is the real cost — it collides with the Ferndale ramp. Trade price for schedule: ask $0.395 with a four-week Q4 lead, and offer to place the Q4 order early so he builds it into October instead of around it.`,
-    draft: `That works on the volume, thanks. Let's meet nearer the middle on price — $0.395 — but the lead time is what matters to me in Q4: I need four weeks, not eight. Here's the trade: I'll place the Q4 order early, by September, so you can build it into your October run instead of around it. Does $0.395 at a four-week lead work if you have the order in hand by then?` },
-  { note: `Close. He's near $0.395 with a five-week lead if you order by Sept 1 — under your ceiling, and the schedule fits the ramp. Take it.`,
-    draft: `Deal — $0.395, five-week lead, I'll have the Q4 order to you by September 1. Appreciate you working the schedule with me. I'll send the paperwork this week.` },
-]
-
-let emily, assistant, greg, m, space, round = 0, gregCount = 0, lastLen = -1
+let emily, assistant, greg, m, space, sealedBrief, round = 0, gregCount = 0, lastLen = -1
 
 async function setup() {
-  $('brief').textContent = BRIEF
   emily = await mintIdentity('Emily Carter')
+  sealedBrief = await sealPrepRoom(emily)             // Emily's brief, sealed to HER box key — it never leaves this browser
+  $('brief').innerHTML = renderBrief(EMILY_BRIEF)
   assistant = await mintIdentity("Emily's assistant")
   greg = await mintIdentity('Greg Palmer')
   space = 'sp-demo-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -40,10 +39,12 @@ async function setup() {
   presentDraft(); poll()
 }
 
-function presentDraft() {
-  if (round >= SCRIPT.length) { $('draftArea').style.display = 'none'; return }
-  $('agentNote').innerHTML = '<b>Assistant:</b> ' + SCRIPT[round].note
-  $('draft').value = SCRIPT[round].draft
+async function presentDraft() {
+  if (round >= ROUNDS) { $('draftArea').style.display = 'none'; return }
+  const brief = await openPrepRoom(emily, sealedBrief)   // the assistant OPENS the sealed prep room to reason over it
+  const { note, draft } = assistantDraft(brief, Array(round).fill(0))
+  $('agentNote').innerHTML = '<b>Assistant (private — never crosses):</b> ' + note
+  $('draft').value = draft
   $('draftArea').style.display = 'block'
   $('approve').disabled = false
 }
@@ -63,7 +64,7 @@ async function poll() {
     const feed = await api.read(space)
     if (feed.entries.length !== lastLen) { lastLen = feed.entries.length; await render(feed) }
     const gregs = feed.entries.filter((x) => x.party === greg.id).length
-    if (gregs > gregCount) { gregCount = gregs; if (round < SCRIPT.length) presentDraft() } // Greg replied → next draft
+    if (gregs > gregCount) { gregCount = gregs; if (round < ROUNDS) presentDraft() } // Greg replied → next draft
   } catch (e) { /* keep polling */ }
   setTimeout(poll, 2500)
 }

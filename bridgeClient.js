@@ -40,14 +40,15 @@ async function ecdhKey(privJwk, pubJwk) { return subtle.deriveKey({ name: 'ECDH'
 async function aesGcm(key, u8) { const iv = crypto.getRandomValues(new Uint8Array(12)); const ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv }, key, u8)); return { iv: b64u(iv), ct: b64u(ct) } }
 async function aesOpen(key, o) { return new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv: ub64u(o.iv) }, key, ub64u(o.ct))) }
 
-/** Seal a raw key (Uint8Array) to a recipient's box public key: ephemeral ECDH → AES-GCM. */
-async function sealTo(rawKey, recipientBoxPub) {
+/** Seal raw bytes (Uint8Array) to a recipient's box public key: ephemeral ECDH → AES-GCM. (Exported so the prep room
+ *  can seal Emily's private brief to her OWN box key — same primitive that seals epoch keys.) */
+export async function sealTo(rawKey, recipientBoxPub) {
   const eph = await subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey'])
   const k = await ecdhKey(await subtle.exportKey('jwk', eph.privateKey), recipientBoxPub)
   return { eph: await subtle.exportKey('jwk', eph.publicKey), ...(await aesGcm(k, rawKey)) }
 }
-/** Open a sealed key with my box private key. */
-async function openBox(sealed, myBoxPriv) { return aesOpen(await ecdhKey(myBoxPriv, sealed.eph), sealed) }
+/** Open a sealed box with my box private key → the raw bytes (or throws on wrong key / tamper). */
+export async function openBox(sealed, myBoxPriv) { return aesOpen(await ecdhKey(myBoxPriv, sealed.eph), sealed) }
 
 async function importEpochAes(raw) { return subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']) }
 async function sealBody(epochRaw, content) { return aesGcm(await importEpochAes(epochRaw), enc.encode(JSON.stringify(content))) }

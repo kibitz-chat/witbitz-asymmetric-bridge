@@ -28,6 +28,7 @@ install — a link is his key — and everything he's asked to believe, he can c
 | The content is confidential — not the feed | the feed is public ciphertext; a body is **unreachable** without the epoch key you hold |
 | Revocation protects the future, not the past | a revoked party still opens what it already held, but **never** the new epoch key — credible *because* it isn't absolute |
 | A downgraded member is read-only, not blinded | stripped of `submit`, Greg is refused writes yet still **reads** new content (kept `read` + the new key) |
+| **Emily's private material never crosses** | her brief (ceiling, leverage, her real reason to close) is **sealed to her own key** and Greg can't open it; the assistant reasons over it, but those private tokens are **absent from every crossing** — checked in `prepRoom.test.mjs` and against the live Bridge |
 
 **The scope line, stated plainly:** every `4xx` in the first table is the *honest server choosing to enforce* — that
 column assumes an **honest operator**. A dishonest one could accept a forged write, or serve one membership to Emily and
@@ -35,15 +36,16 @@ another to Greg (**equivocation**), and nothing in this suite would catch it. De
 server-signed **checkpoint** layer parties pin + gossip — **designed, not yet built** (it's the next demo). The second
 table is exactly what survives a dishonest server: your own decryptions, which the platform can neither see nor fake.
 
-Every signature, seal, epoch key, and cap is **real** and keys never leave the browser. The negotiation copy — and the
-prep room, and the assistant's reasoning — are **scripted** (see Scope).
+Every signature, seal, epoch key, cap, **and the prep room** is **real** — keys never leave the browser. The one thing
+still illustrative is the assistant's *drafting logic* (a deterministic negotiation function, not a live model); see Scope.
 
 ## The files (this is the whole app — read it)
 
 | File | What it is |
 |---|---|
 | [`bridgeClient.js`](./bridgeClient.js) | the browser Bridge client — mint identity, found/admit (party-side re-key), seal bodies + epoch keys, **sign + co-sign** entries, verify attribution, open by key. Its signatures verify against the server's own verifier (see the test). |
-| [`prep.js`](./prep.js) | Emily's seat: draft → **edit** → approve → **co-signed** crossing |
+| [`prepRoom.js`](./prepRoom.js) | Emily's **prep room** — her brief (ceiling, leverage, documents) **sealed to her own box key**; the assistant opens it to reason + draft. It never crosses; Greg can't open it. |
+| [`prep.js`](./prep.js) | Emily's seat: the assistant reads the sealed prep room → draft → **edit** → approve → **co-signed** crossing |
 | [`seat.js`](./seat.js) | Greg's link seat: read + verify every signature + open by his key + post; the `[check this]` widget |
 | [`index.html`](./index.html) · [`seat.html`](./seat.html) · [`style.css`](./style.css) | the two seats |
 | [`_headers`](./_headers) | the enforced CSP — `connect-src` is `self` + `api.witbitz.chat` **only** (the app's true egress) |
@@ -54,7 +56,7 @@ prep room, and the assistant's reasoning — are **scripted** (see Scope).
 ## Verify it yourself — offline, no network, no keys
 
 ```
-node --test server/*.test.mjs bridgeClient.test.mjs   # 48 tests: attribution, membership authz, revocation, the
+node --test server/*.test.mjs *.test.mjs   # 51 tests: attribution, membership authz, revocation, the
                                                        # pre-signed-transition attack, the ATOMIC compare-and-set (409),
                                                        # the delete-token expiry window, EQUIVOCATION detection + the
                                                        # GOSSIP transport (a third party verifies the proof), interop
@@ -69,10 +71,15 @@ The **live** proof (`node live-e2e.mjs`) can only show what an honest server *do
 
 ## Scope — what this demo implements
 
-The **crossing**: real signatures, caps, and content-integrity, live against the Bridge. Emily's **prep room**
-(a sealed Space with her brief and documents) and the assistant's **model turn** are **scripted** — not built in
-this repo. So "her private material never crossed" is true because there's nothing here to cross; what's exercised
-is the crossing itself. The Bridge is the novel half — and the real one.
+The **crossing** *and* the **prep room** are real. Emily's brief — her ceiling, her leverage, the reason she must
+close — is a structured document **sealed to her own box key** ([`prepRoom.js`](./prepRoom.js)); it lives only in her
+browser, is never sent to the Bridge, and Greg (who holds the *room* key) cannot open the *prep* room. The assistant
+**opens it to reason** and drafts grounded in its numbers, but *none* of the private tokens ever reaches a crossing —
+proven offline ([`prepRoom.test.mjs`](./prepRoom.test.mjs)) and against the **live** Bridge (`live-e2e.mjs`: three
+crossings drafted from the sealed brief, and the ceiling / competitor / the secret verified absent from all of them).
+So *"her private material never crossed"* is now a **checkable cryptographic fact**, not a vacuous one. The one thing
+still **illustrative** is the assistant's *drafting logic* (a deterministic negotiation function, not a live model) —
+what's real is that it reasons over sealed material that provably stays sealed. The Bridge remains the novel half.
 
 ## What it does not prove — plainly
 

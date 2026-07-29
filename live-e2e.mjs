@@ -1,6 +1,7 @@
 // Drive the LIVE Bridge through the full asymmetric co-signed flow — the runnable proof. Creates throwaway sp-ci-*
 // spaces and DELETES them at the end (signed teardown), so CI leaves no litter on production. Run: node live-e2e.mjs
 import { mintIdentity, publicIdentity, openSpace, admit, revoke, recap, makeCoSignedEntry, makeEntry, verifyEntry, openEntry, signMembership, signDelete, chainMatchesCheckpoint, auditAgainstPeer, bridge } from './bridgeClient.js'
+import { PRIVATE_TOKENS, sealPrepRoom, openPrepRoom, assistantDraft } from './prepRoom.js'
 
 const BASE = process.env.BRIDGE_BASE || 'https://api.witbitz.chat/v1/bridge'
 const api = bridge(BASE)
@@ -81,6 +82,21 @@ try {
   const cpE = await api.checkpoint(A.s), cpG = await api.checkpoint(A.s) // each party pins its own view
   const verdict = await auditAgainstPeer(full, cpE, cpG)                 // Emily audits Greg's pinned checkpoint (received out-of-band)
   log(verdict.verdict === 'consistent' && !verdict.equivocation, 'gossip: Emily and Greg pinned the SAME head — no equivocation on the honest live Bridge (a fork is caught offline, with a proof)')
+
+  // ── THE PREP ROOM — the private half made real. Emily's brief is SEALED to HER key (never sent to the Bridge); the
+  // assistant OPENS it to reason + draft; only the co-signed line crosses. Verify the whole point of the demo: none of
+  // Emily's private material ever reaches a crossing, and Greg — who holds the room key — still can't open the prep room.
+  const P = await space()
+  const sealedBrief = await sealPrepRoom(emily)
+  log((await openPrepRoom(emily, sealedBrief)) !== null && (await openPrepRoom(greg, sealedBrief)) === null, 'prep room: sealed to Emily — she opens it; Greg (who holds the ROOM key) cannot open the PREP room')
+  for (let r = 0; r < 3; r++) { // three grounded crossings, each drafted from the SEALED brief, co-signed, crossed to the live Bridge
+    const { draft } = assistantDraft(await openPrepRoom(emily, sealedBrief), Array(r).fill(0))
+    await api.submit(P.s, await makeCoSignedEntry(P.m, emily, assistant, { content: draft }))
+  }
+  const crossed = await Promise.all((await api.read(P.s, 0)).entries.map((e) => openEntry(P.m, greg, e)))
+  log(crossed.length === 3 && crossed.every((c) => typeof c === 'string' && c.length), 'prep room: Greg opens all 3 crossings with his link key (the offers)')
+  const leaked = PRIVATE_TOKENS.filter((t) => crossed.join('\n').includes(t))
+  log(leaked.length === 0, `prep room: NONE of Emily's private material crossed — ceiling / competitor / the reason she must close are absent from all 3 messages${leaked.length ? ' — LEAKED: ' + leaked.join(', ') : ''}`)
 
   // ── REVOCATION + the PRE-SIGNED-TRANSITION attack — the move a reviewer reaches for once the obvious PUT is closed:
   // a party signs a membership WHILE it holds admit, its admit is revoked, then it submits the stale-but-valid record.
